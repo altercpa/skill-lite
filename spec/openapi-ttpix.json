@@ -1,0 +1,1112 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA — TikTok Pixel API (ttpix)",
+    "version": "1.0.0",
+    "description": "JSON CRUD API for the ttpix hack — server-side TikTok Events API (Conversions API) pixels. A pixel matches leads by a chosen field/value and fires TikTok conversion events (new/hold/approve) to business-api.tiktok.com. Ownership is user XOR gang: a personal pixel has user>0, gang=0; a team pixel has user=0, gang>0. Authentication uses the id credential (id={user}-{key}); the pixel identifier is passed in the pb parameter. The TikTok Pixel code is a string; there is no data/noclick field; 19 TikTok events are accepted. Editing is partial; activation is edit with the single active field. Available on AlterCPA Lite and Pro. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "domain.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "ttpix",
+      "description": "TikTok Pixel management"
+    }
+  ],
+  "paths": {
+    "/api/ttpix/list.json": {
+      "get": {
+        "operationId": "ttpixList",
+        "summary": "Pixel list",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          },
+          {
+            "name": "pixel",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by TikTok Pixel code (exact match)"
+          },
+          {
+            "name": "sub",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by matched lead field code"
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by match value"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4
+            },
+            "description": "Filter by runtime health status"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 50
+            },
+            "description": "Records per page; 0 returns all without pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of pixels keyed by pixel ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/PixelShort"
+                      }
+                    },
+                    "nav": {
+                      "$ref": "#/components/schemas/Nav"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/show.json": {
+      "get": {
+        "operationId": "ttpixShow",
+        "summary": "Get pixel",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full pixel record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PixelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/add.json": {
+      "post": {
+        "operationId": "ttpixAdd",
+        "summary": "Create pixel",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PixelAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created pixel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PixelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/edit.json": {
+      "post": {
+        "operationId": "ttpixEdit",
+        "summary": "Edit pixel (partial)",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PixelEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated pixel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PixelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/clone.json": {
+      "post": {
+        "operationId": "ttpixClone",
+        "summary": "Clone pixel under a new name",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name of the new pixel (written to comment)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New pixel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PixelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/del.json": {
+      "post": {
+        "operationId": "ttpixDel",
+        "summary": "Delete pixel",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted pixel id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/events.json": {
+      "get": {
+        "operationId": "ttpixEvents",
+        "summary": "TikTok events reference",
+        "tags": [
+          "ttpix"
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of TikTok event names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/tags.json": {
+      "get": {
+        "operationId": "ttpixTags",
+        "summary": "Bindable lead fields reference",
+        "tags": [
+          "ttpix"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of field code to label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ttpix/goals.json": {
+      "get": {
+        "operationId": "ttpixGoals",
+        "summary": "Conversion goals reference (scope-owned)",
+        "tags": [
+          "ttpix"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of goal id to name (0 = No goal)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Credential in the form {user}-{key}, e.g. 123-abcde"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "description": "Access scope; passed via GET only",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ],
+          "default": "user"
+        }
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "description": "Owner user ID for admin scope",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "description": "Team ID for admin scope",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Pb": {
+        "name": "pb",
+        "in": "query",
+        "required": true,
+        "description": "Numeric pixel identifier",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, no-pixel, no-sub, no-token, no-name, bad-sub, bad-event; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "no-sub"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (pixel outside the scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (pb missing), not-found (pixel does not exist).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "not-found"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "scope, no-pixel, no-sub, no-token, no-name, bad-sub, bad-event, no-id, not-found, access, db"
+          }
+        }
+      },
+      "Event": {
+        "type": "string",
+        "enum": [
+          "Lead",
+          "Purchase",
+          "ViewContent",
+          "AddToCart",
+          "AddToWishlist",
+          "InitiateCheckout",
+          "AddPaymentInfo",
+          "CompleteRegistration",
+          "Contact",
+          "Subscribe",
+          "StartTrial",
+          "Download",
+          "Search",
+          "Pageview",
+          "Schedule",
+          "SubmitApplication",
+          "CustomizeProduct",
+          "ApplicationApproval",
+          "FindLocation"
+        ]
+      },
+      "Nav": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          }
+        }
+      },
+      "PixelShort": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4,
+            "description": "Runtime health, read-only: 0 new, 1 ok, 2 invalid params, 3 token expired, 4 network error"
+          },
+          "pixel": {
+            "type": "string",
+            "description": "TikTok Pixel code"
+          },
+          "sub": {
+            "type": "string",
+            "description": "Matched lead field code"
+          },
+          "value": {
+            "type": "string",
+            "description": "Match value; empty means match on the Pixel code"
+          },
+          "new": {
+            "type": "string"
+          },
+          "hold": {
+            "type": "string"
+          },
+          "approve": {
+            "type": "string"
+          },
+          "proxy": {
+            "type": "boolean",
+            "description": "Per-pixel proxy set"
+          },
+          "domain": {
+            "type": "string",
+            "description": "event_source_url template"
+          },
+          "comment": {
+            "type": "string",
+            "description": "Free-text label (the name)"
+          }
+        }
+      },
+      "PixelFull": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PixelShort"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "integer"
+              },
+              "gang": {
+                "type": "integer"
+              },
+              "goal": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "token": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "PixelResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PixelFull"
+          }
+        }
+      },
+      "PixelAdd": {
+        "type": "object",
+        "required": [
+          "pixel",
+          "sub",
+          "token"
+        ],
+        "properties": {
+          "pixel": {
+            "type": "string",
+            "description": "TikTok Pixel code"
+          },
+          "sub": {
+            "type": "string",
+            "description": "Lead field code to match on (see tags)"
+          },
+          "token": {
+            "type": "string",
+            "description": "TikTok Access-Token"
+          },
+          "value": {
+            "type": "string"
+          },
+          "goal": {
+            "description": "Goal id or array of goal ids",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "proxy": {
+            "type": "string"
+          },
+          "new": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Event"
+              }
+            ],
+            "default": "Lead"
+          },
+          "hold": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "approve": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Alias for comment"
+          }
+        }
+      },
+      "PixelEdit": {
+        "type": "object",
+        "description": "Partial — only sent fields are written. Owner fields and status are never written.",
+        "properties": {
+          "active": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "pixel": {
+            "type": "string"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "goal": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "token": {
+            "type": "string"
+          },
+          "proxy": {
+            "type": "string"
+          },
+          "new": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "hold": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "approve": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

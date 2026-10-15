@@ -1,0 +1,1209 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Profile & System API",
+    "version": "1.0.0",
+    "description": "User account management (profile/*) and system introspection (sys/*).\n\nAuth split: profile/info and profile/edit require API token. profile/login, profile/register, profile/recover do NOT require a token. sys/ping and sys/users require a token (sys/users: admin accounts only); sys/settings does not.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): bad-auth, disabled, email-exist, short-pass, short-name, required, no-email, bad-email, info, save; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "bad-email"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "UserAccess": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "integer",
+            "description": "0=regular, >0=admin"
+          },
+          "vip": {
+            "type": "integer"
+          },
+          "ban": {
+            "type": "integer"
+          },
+          "warn": {
+            "type": "integer"
+          }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "reg": {
+            "type": "integer",
+            "description": "Registration Unix timestamp"
+          },
+          "tz": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Timezone identifier, or false"
+          },
+          "lang": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Language code, or false"
+          }
+        }
+      },
+      "ProfileResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "api": {
+            "type": "string",
+            "description": "API token"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "access": {
+            "$ref": "#/components/schemas/UserAccess"
+          },
+          "info": {
+            "$ref": "#/components/schemas/UserInfo"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Full user meta object including lang, skin, avatar (bool), and any contact fields. No fixed schema.",
+            "properties": {
+              "lang": {
+                "type": "string"
+              },
+              "skin": {
+                "type": "string"
+              },
+              "avatar": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/profile/login.json": {
+      "get": {
+        "operationId": "profileLogin",
+        "summary": "Get current session user",
+        "tags": [
+          "Profile"
+        ],
+        "security": [],
+        "description": "Returns the user from the current session (cookie-based). No API token required.\n\nSpecial: POSTing in_user=email&in_pass=password triggers credential login and establishes a session as a side effect.\n\nNote: ban field is boolean here (unlike integer in profile/info).\n\nError codes by HTTP status: 400 bad-auth.",
+        "responses": {
+          "200": {
+            "description": "Session user data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "id"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "api": {
+                      "type": "string",
+                      "description": "API token of the logged-in user."
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "ban": {
+                      "type": "boolean",
+                      "description": "Boolean (not integer like profile/info)"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "id": 13,
+                  "api": "4a3bc9d...",
+                  "name": "John",
+                  "email": "john@example.com",
+                  "ban": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "profileLoginPost",
+        "summary": "Login with credentials (establishes session)",
+        "tags": [
+          "Profile"
+        ],
+        "security": [],
+        "description": "POST in_user + in_pass to perform credential login and get the session user. Error codes by HTTP status: 400 bad-auth.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "in_user": {
+                    "type": "string",
+                    "description": "Email address"
+                  },
+                  "in_pass": {
+                    "type": "string",
+                    "description": "Plaintext password"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Same response as GET — session user."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profile/info.json": {
+      "get": {
+        "operationId": "profileInfo",
+        "summary": "Get profile data",
+        "tags": [
+          "Profile"
+        ],
+        "description": "Returns full profile for the authenticated user. Admin can use uu= to read another user's profile (non-existent user returns zeros silently, no error).",
+        "parameters": [
+          {
+            "name": "uu",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Admin only: target user ID override"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile data. Always returns status:ok even for non-existent uu target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "id": 13,
+                  "api": "4a3bc9d...",
+                  "name": "John",
+                  "email": "john@example.com",
+                  "access": {
+                    "level": 0,
+                    "vip": 0,
+                    "ban": 0,
+                    "warn": 0
+                  },
+                  "info": {
+                    "reg": 1690000000,
+                    "tz": "Europe/Moscow",
+                    "lang": "en"
+                  },
+                  "meta": {
+                    "lang": "en",
+                    "skin": "default",
+                    "avatar": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profile/edit.json": {
+      "post": {
+        "operationId": "profileEdit",
+        "summary": "Edit profile",
+        "tags": [
+          "Profile"
+        ],
+        "description": "Updates profile fields. POST wins over GET.\n\nWARNING: lang and skin are ALWAYS overwritten even if not provided — omitting them resets to empty string.\n\nFor avatar upload, use multipart/form-data.\n\nDuplicate email is silently ignored (no error, no update).\n\nAvatar upload failures are silently ignored.\n\nError codes by HTTP status: 400 info (name missing), save (update failed).",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Display name (required)"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "New email (must be unique; duplicate silently ignored)"
+                  },
+                  "pass": {
+                    "type": "string",
+                    "description": "New password"
+                  },
+                  "conf": {
+                    "type": "string",
+                    "description": "Password confirmation (must match pass exactly)"
+                  },
+                  "tz": {
+                    "type": "string",
+                    "description": "Timezone (only saved if the tracker's per-user time zones setting is on)"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "description": "Language code. ALWAYS overwrites — omit to reset."
+                  },
+                  "skin": {
+                    "type": "string",
+                    "description": "Skin code. ALWAYS overwrites — omit to reset."
+                  },
+                  "unavatar": {
+                    "description": "Any truthy value clears the avatar"
+                  },
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Avatar image (jpg/jpeg/png/gif/webm/webp/svg/avif). Saved as 100×100 and 40×40 JPG."
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "type": "string"
+                  },
+                  "conf": {
+                    "type": "string"
+                  },
+                  "tz": {
+                    "type": "string"
+                  },
+                  "lang": {
+                    "type": "string"
+                  },
+                  "skin": {
+                    "type": "string"
+                  },
+                  "unavatar": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile patch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Changed user-row fields only",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "tz": {
+                          "type": "string"
+                        },
+                        "mail": {
+                          "type": "string"
+                        },
+                        "pass": {
+                          "type": "string",
+                          "description": "Password HASH (not plaintext). Present only when password was changed."
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Submitted meta patch (not the full merged result)",
+                      "properties": {
+                        "lang": {
+                          "type": "string"
+                        },
+                        "skin": {
+                          "type": "string"
+                        },
+                        "avatar": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profile/register.json": {
+      "post": {
+        "operationId": "profileRegister",
+        "summary": "Register new user",
+        "tags": [
+          "Profile"
+        ],
+        "security": [],
+        "description": "Creates a new account. Gated by the tracker's registration-disabled and captcha settings (both collapse to 'disabled' error — client can't tell which is active). Admin callers (passing a valid ?id= of an admin account) bypass these gates.\n\nNo session is created — call profile/login afterwards.\n\nError codes by HTTP status: 400 disabled, email-exist, short-pass, short-name, required; 500 db.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "name",
+                  "pass"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Must be unique. Checked before the name and password length checks."
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 4
+                  },
+                  "pass": {
+                    "type": "string",
+                    "minLength": 4
+                  },
+                  "ref": {
+                    "type": "integer",
+                    "description": "Referrer user ID. Validated; not stored by default."
+                  },
+                  "man": {
+                    "type": "integer",
+                    "description": "Manager user ID. The user must have the Manager or Business staff role, otherwise the value is ignored; not stored by default."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New user credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "id",
+                    "api"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "api": {
+                      "type": "string",
+                      "description": "32-char hex API token"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "id": 42,
+                  "api": "4a3bc9d...",
+                  "name": "John",
+                  "email": "john@example.com"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profile/recover.json": {
+      "post": {
+        "operationId": "profileRecover",
+        "summary": "Request password recovery email",
+        "tags": [
+          "Profile"
+        ],
+        "security": [],
+        "description": "Sends a recovery email with a recovery link. Mail failures are silently ignored — always returns ok if user exists.\n\nError codes by HTTP status: 400 no-email, bad-email.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok if user found and email sent (mail failures silently ignored).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sys/ping.json": {
+      "get": {
+        "operationId": "sysPing",
+        "summary": "Liveness check",
+        "tags": [
+          "System"
+        ],
+        "description": "Validates the API token and returns the resolved user ID. This call is intentionally NOT written to the API request log. Error codes by HTTP status: 401 key; 403 ban; 418 bot.",
+        "responses": {
+          "200": {
+            "description": "User ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "user": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "user": 13
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sys/users.json": {
+      "get": {
+        "operationId": "sysUsers",
+        "summary": "User list / search",
+        "tags": [
+          "System"
+        ],
+        "description": "Returns paginated user list with filtering. Available to admin accounts only: any other account gets the auth error (HTTP 401). GET-only parameters.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 100
+            },
+            "description": "Page size; minimum 1, no upper limit"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by exact user ID"
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "mail",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Filter by exact email"
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "0=regular, 1=admin"
+          },
+          {
+            "name": "vip",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "ban",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "warn",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 2
+            },
+            "description": "Full-text search in name and email"
+          },
+          {
+            "name": "ms",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Meta-search key (requires mv)"
+          },
+          {
+            "name": "mv",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Meta-search value — substring match, then exact post-filter"
+          },
+          {
+            "name": "short",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Any value (even empty) = short shape: only id, name, mail, api"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User list. Note: total is computed before meta-search post-filter and may be higher than actual returned count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "show": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count before meta-search post-filter; may be inaccurate when ms/mv used"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "mail": {
+                            "type": "string"
+                          },
+                          "api": {
+                            "type": "string",
+                            "description": "API token of the user"
+                          },
+                          "lang": {
+                            "type": [
+                              "string",
+                              "boolean"
+                            ]
+                          },
+                          "signs": {
+                            "type": "object",
+                            "properties": {
+                              "register": {
+                                "type": "integer",
+                                "description": "Registration Unix timestamp"
+                              },
+                              "ip": {
+                                "type": "string",
+                                "description": "Last IP (IPv4 or IPv6)"
+                              },
+                              "last": {
+                                "type": [
+                                  "string",
+                                  "boolean"
+                                ],
+                                "description": "Last login date YYYY-MM-DD, or false"
+                              }
+                            }
+                          },
+                          "auth": {
+                            "type": "object",
+                            "properties": {
+                              "admin": {
+                                "type": "boolean"
+                              },
+                              "vip": {
+                                "type": "boolean"
+                              },
+                              "ban": {
+                                "type": "boolean"
+                              },
+                              "warn": {
+                                "type": "boolean"
+                              },
+                              "gang": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "meta": {
+                            "type": "object",
+                            "description": "Decoded user meta minus the lang, graph, nograph, pbs keys. No password hash included."
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "full": {
+                    "value": {
+                      "status": "ok",
+                      "page": 1,
+                      "show": 100,
+                      "total": 234,
+                      "data": [
+                        {
+                          "id": 13,
+                          "name": "Anton",
+                          "mail": "user@example.com",
+                          "api": "4a3bc9d...",
+                          "lang": "ru",
+                          "signs": {
+                            "register": 1690000000,
+                            "ip": "1.2.3.4",
+                            "last": "2024-08-21"
+                          },
+                          "auth": {
+                            "admin": false,
+                            "vip": false,
+                            "ban": false,
+                            "warn": false,
+                            "gang": 0
+                          },
+                          "meta": {
+                            "custom_flag": "value"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "short": {
+                    "value": {
+                      "status": "ok",
+                      "page": 1,
+                      "show": 100,
+                      "total": 234,
+                      "data": [
+                        {
+                          "id": 13,
+                          "name": "Anton",
+                          "mail": "user@example.com",
+                          "api": "4a3bc9d..."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sys/settings.json": {
+      "get": {
+        "operationId": "sysSettings",
+        "summary": "Tracker public settings",
+        "tags": [
+          "System"
+        ],
+        "security": [],
+        "description": "Returns the tracker timezone. No authentication required (no token needed). Response has NO status envelope — just the raw object.",
+        "responses": {
+          "200": {
+            "description": "Settings object WITHOUT status field (unlike other endpoints).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "Tracker timezone (e.g. Europe/Moscow). May be empty string if not configured."
+                    }
+                  }
+                },
+                "example": {
+                  "timezone": "Europe/Moscow"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Profile",
+      "description": "User account management. info/edit require token; login/register/recover do not."
+    },
+    {
+      "name": "System",
+      "description": "Liveness, user directory (admin accounts only), and settings."
+    }
+  ]
+}

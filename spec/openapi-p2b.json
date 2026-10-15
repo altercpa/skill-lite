@@ -1,0 +1,1523 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA — Postback 2.0 API (p2b)",
+    "version": "1.0.0",
+    "description": "JSON CRUD API for the p2b hack — Postback 2.0, an outbound postback / notification engine. A postback is an automatic outbound HTTP call or Telegram message that fires when a lead changes state, filtered by an optional field/value and by the enabled status events (global/new/hold/approve/cancel/trash). Ownership is user, team or system: a personal postback has user>0, gang=0; a team postback has user=0, gang>0; a system (global) postback has user=0, gang=0 and is addressed with scope=admin&user=0&gang=0. For Telegram (type=1) the url is the bot token, header is the chat_id and post is the message text. Authentication uses the id credential (id={user}-{key}); the postback identifier is passed in the pb parameter. Editing is partial; activation is edit with the single active field. Available on AlterCPA Lite. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "domain.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "p2b",
+      "description": "Postback 2.0 management"
+    }
+  ],
+  "paths": {
+    "/api/p2b/list.json": {
+      "get": {
+        "operationId": "p2bList",
+        "summary": "Postback list",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search by postback name"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by the tag (lead field code)"
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by the filter value"
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "description": "Filter by event index: 0 global, 1 new, 2 hold, 3 approve, 4 cancel, 5 trash"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "description": "Filter by send channel: 0 HTTP, 1 Telegram"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 50
+            },
+            "description": "Records per page; 0 returns all without pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of postbacks keyed by postback ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/PostbackShort"
+                      }
+                    },
+                    "nav": {
+                      "$ref": "#/components/schemas/Nav"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/show.json": {
+      "get": {
+        "operationId": "p2bShow",
+        "summary": "Get postback",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full postback record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/add.json": {
+      "post": {
+        "operationId": "p2bAdd",
+        "summary": "Create postback",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PostbackAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created postback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/edit.json": {
+      "post": {
+        "operationId": "p2bEdit",
+        "summary": "Edit postback (partial)",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PostbackEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated postback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/clone.json": {
+      "post": {
+        "operationId": "p2bClone",
+        "summary": "Clone postback under a new name",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name of the new postback (written to name)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New postback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/del.json": {
+      "post": {
+        "operationId": "p2bDel",
+        "summary": "Delete postback",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Pb"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted postback id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/events.json": {
+      "get": {
+        "operationId": "p2bEvents",
+        "summary": "Lead-status events reference",
+        "tags": [
+          "p2b"
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of lead-status event objects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/tags.json": {
+      "get": {
+        "operationId": "p2bTags",
+        "summary": "Filterable lead fields reference",
+        "tags": [
+          "p2b"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of field code to label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/goals.json": {
+      "get": {
+        "operationId": "p2bGoals",
+        "summary": "Conversion goals reference (scope-owned)",
+        "tags": [
+          "p2b"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of goal id to name (0 = No goal)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/formats.json": {
+      "get": {
+        "operationId": "p2bFormats",
+        "summary": "Body formats reference",
+        "tags": [
+          "p2b"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of format code to label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/p2b/types.json": {
+      "get": {
+        "operationId": "p2bTypes",
+        "summary": "Send channel types reference",
+        "tags": [
+          "p2b"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of type code to label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Credential in the form {user}-{key}, e.g. 123-abcde"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "description": "Access scope; passed via GET only. A system (global) postback is addressed with scope=admin&user=0&gang=0.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ],
+          "default": "user"
+        }
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "description": "Owner user ID for admin scope (0 for a system postback)",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "description": "Team ID for admin scope (0 for a system postback)",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Pb": {
+        "name": "pb",
+        "in": "query",
+        "required": true,
+        "description": "Numeric postback identifier",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, no-name, no-url, no-post, no-header, bad-filter; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "no-name"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (postback outside the scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (pb missing), not-found (postback does not exist).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "not-found"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "scope, no-name, no-url, no-post, no-header, bad-filter, no-id, not-found, access, db"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "description": "Lead-status event descriptor",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Event index"
+          },
+          "key": {
+            "type": "string",
+            "enum": [
+              "global",
+              "new",
+              "hold",
+              "approve",
+              "cancel",
+              "trash"
+            ],
+            "description": "Event key (the add/edit flag name)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable event name"
+          }
+        }
+      },
+      "Nav": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          }
+        }
+      },
+      "PostbackShort": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Active (1) or paused (0)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Postback name"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Send channel: 0 HTTP postback, 1 Telegram message"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Lead field code to filter on (the tag); empty means no filter"
+          },
+          "value": {
+            "type": "string",
+            "description": "Value the filter field must equal; empty means any value"
+          },
+          "global": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the global event (any status change)"
+          },
+          "new": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the new event"
+          },
+          "hold": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the hold event"
+          },
+          "approve": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the approve event"
+          },
+          "cancel": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the cancel event"
+          },
+          "trash": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fire on the trash event"
+          },
+          "async": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Send through the queue (1) or synchronously (0)"
+          },
+          "nolog": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Skip the request log"
+          },
+          "auth": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Pre-auth handshake enabled"
+          }
+        }
+      },
+      "PostbackFull": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PostbackShort"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "integer",
+                "description": "Owner user ID (0 for a team or system postback)"
+              },
+              "gang": {
+                "type": "integer",
+                "description": "Owner team ID (0 for a personal or system postback)"
+              },
+              "goal": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "Goal IDs the postback is restricted to (empty means any goal)"
+              },
+              "url": {
+                "type": "string",
+                "description": "Request URL; for Telegram (type=1) the bot token"
+              },
+              "post": {
+                "type": "string",
+                "description": "POST body; for Telegram the message text"
+              },
+              "format": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Body format"
+              },
+              "header": {
+                "type": "string",
+                "description": "Request headers; for Telegram the chat_id"
+              },
+              "proxy": {
+                "type": "string",
+                "description": "Per-postback proxy (empty if not set)"
+              },
+              "aurl": {
+                "type": "string",
+                "description": "Pre-auth handshake: authentication URL"
+              },
+              "apost": {
+                "type": "string",
+                "description": "Pre-auth handshake: authentication request body"
+              },
+              "aformat": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Pre-auth handshake: authentication body format"
+              },
+              "aheader": {
+                "type": "string",
+                "description": "Pre-auth handshake: authentication request headers"
+              },
+              "apath": {
+                "type": "string",
+                "description": "Pre-auth handshake: dotted JSON path to the token in the auth response"
+              },
+              "avalid": {
+                "type": "integer",
+                "description": "Pre-auth handshake: token lifetime in minutes"
+              }
+            }
+          }
+        ]
+      },
+      "PostbackResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PostbackFull"
+          }
+        }
+      },
+      "PostbackAdd": {
+        "type": "object",
+        "description": "Creates an active postback. For Telegram (type=1) the post and header fields are required (post is the message text, header is the chat_id, url is the bot token). Each unsent event flag is stored as 0, so send at least one of global/new/hold/approve/cancel/trash.",
+        "required": [
+          "name",
+          "url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Postback name"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Send channel: 0 HTTP postback, 1 Telegram message"
+          },
+          "url": {
+            "type": "string",
+            "description": "Request URL; for Telegram the bot token"
+          },
+          "post": {
+            "type": "string",
+            "description": "POST body; for Telegram the message text (required when type=1)"
+          },
+          "header": {
+            "type": "string",
+            "description": "Request headers; for Telegram the chat_id (required when type=1)"
+          },
+          "format": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "default": 0,
+            "description": "Body format (see formats)"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Lead field code to filter on (see tags)"
+          },
+          "value": {
+            "type": "string",
+            "description": "Value the filter field must equal"
+          },
+          "goal": {
+            "description": "Goal id or array of goal ids",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "global": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "new": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "hold": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "approve": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "cancel": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "trash": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0
+          },
+          "proxy": {
+            "type": "string",
+            "description": "Per-postback proxy (host:port or scheme://user:pass@host:port)"
+          },
+          "async": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 1,
+            "description": "Send through the queue (1) or synchronously (0)"
+          },
+          "nolog": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Skip the request log"
+          },
+          "auth": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Enable the pre-auth handshake"
+          },
+          "aurl": {
+            "type": "string",
+            "description": "Pre-auth handshake: authentication URL"
+          },
+          "apost": {
+            "type": "string",
+            "description": "Pre-auth handshake: authentication request body"
+          },
+          "aformat": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "default": 0,
+            "description": "Pre-auth handshake: authentication body format"
+          },
+          "aheader": {
+            "type": "string",
+            "description": "Pre-auth handshake: authentication request headers"
+          },
+          "apath": {
+            "type": "string",
+            "description": "Pre-auth handshake: dotted JSON path to the token"
+          },
+          "avalid": {
+            "type": "integer",
+            "default": 60,
+            "description": "Pre-auth handshake: token lifetime in minutes"
+          }
+        }
+      },
+      "PostbackEdit": {
+        "type": "object",
+        "description": "Partial — only sent fields are written. Owner fields are never written. Activation is done by sending the single active field. Only the event flags present in the request are written.",
+        "properties": {
+          "active": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Activate (1) or pause (0)"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "Request URL; for Telegram the bot token"
+          },
+          "post": {
+            "type": "string",
+            "description": "POST body; for Telegram the message text"
+          },
+          "header": {
+            "type": "string",
+            "description": "Request headers; for Telegram the chat_id"
+          },
+          "format": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "filter": {
+            "type": "string",
+            "description": "Lead field code to filter on (empty string clears it)"
+          },
+          "value": {
+            "type": "string"
+          },
+          "goal": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "global": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "new": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "hold": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "approve": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "cancel": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "trash": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "proxy": {
+            "type": "string"
+          },
+          "async": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "nolog": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "auth": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "aurl": {
+            "type": "string"
+          },
+          "apost": {
+            "type": "string"
+          },
+          "aformat": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "aheader": {
+            "type": "string"
+          },
+          "apath": {
+            "type": "string"
+          },
+          "avalid": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

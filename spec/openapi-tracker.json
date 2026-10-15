@@ -1,0 +1,3318 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Tracker, Gangs & Click API",
+    "version": "1.0.0",
+    "description": "Three subsystems: /api/tracker/* (postback, stats, leads, clicks, spend, settings, templates, networks), /api/gangs/* (team-scope wrappers over tracker functions), and the Click/TDS routes (/track-tds/, /track-dom/, /track-pxl/, /track-thx/) which use a different routing mechanism without standard API auth.\n\ntracker/stats, tracker/leads, and tracker/clicks accept GET or POST, support page navigation via show/page, and support column sorting via sort/order (default order is desc).\n\nIMPORTANT: tracker/stats, tracker/leads, and tracker/clicks return 'payment-required' (not 'unpaid') as the billing error — this answers HTTP 400, not 402.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): payment-required (stats, leads, clicks: answered with 400, not 402), no-item, no-from, no-to, no-changes, no-params, no-gang (gangs/*); any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "no-item"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (lead outside the scope; gangs/*: caller is not the gang admin).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "access"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-click, bad-click (click code missing or unknown), bad-flow (flow not found); spend: empty (no usable price or filter condition).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "bad-click"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "LeadStage": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "new",
+          "hold",
+          "approve",
+          "cancel",
+          "trash"
+        ]
+      },
+      "PostbackTemplate": {
+        "type": "object",
+        "description": "One CPA-network / affiliate-program preset. Only the fields relevant to the template are present. pb* values are query strings without a leading '?'.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "CPA network / affiliate program name"
+          },
+          "url": {
+            "type": "string",
+            "description": "Offer/landing URL (also used by the TDS fast-redirect lookup)"
+          },
+          "param": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Placeholder names ([[name]]) used in the postback query strings"
+          },
+          "pb": {
+            "type": "string",
+            "description": "Global postback query string"
+          },
+          "pbr": {
+            "type": "string",
+            "description": "Registration postback query string"
+          },
+          "pbd": {
+            "type": "string",
+            "description": "Deposit postback query string"
+          },
+          "pbs": {
+            "type": "string",
+            "description": "RevShare payment postback query string"
+          },
+          "pbn": {
+            "type": "string",
+            "description": "New-lead postback query string"
+          },
+          "pbh": {
+            "type": "string",
+            "description": "Hold postback query string"
+          },
+          "pba": {
+            "type": "string",
+            "description": "Approve postback query string"
+          },
+          "pbc": {
+            "type": "string",
+            "description": "Cancel postback query string"
+          },
+          "pbt": {
+            "type": "string",
+            "description": "Trash postback query string"
+          }
+        }
+      },
+      "TrafficSource": {
+        "type": "object",
+        "description": "One traffic-source (ad network) preset. Only configured fields are present. Value templates may embed [[placeholder]] macros.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Traffic source / ad network name"
+          },
+          "utms": {
+            "type": "string",
+            "description": "UTM Source value template"
+          },
+          "utmc": {
+            "type": "string",
+            "description": "UTM Campaign value template"
+          },
+          "utmn": {
+            "type": "string",
+            "description": "UTM Content value template"
+          },
+          "utmt": {
+            "type": "string",
+            "description": "UTM Term value template"
+          },
+          "utmm": {
+            "type": "string",
+            "description": "UTM Medium value template"
+          },
+          "subid": {
+            "type": "string",
+            "description": "SubID value template"
+          },
+          "data1": {
+            "type": "string"
+          },
+          "data2": {
+            "type": "string"
+          },
+          "data3": {
+            "type": "string"
+          },
+          "data4": {
+            "type": "string"
+          },
+          "data5": {
+            "type": "string"
+          },
+          "hide1": {
+            "type": "string"
+          },
+          "hide2": {
+            "type": "string"
+          },
+          "hide3": {
+            "type": "string"
+          },
+          "hide4": {
+            "type": "string"
+          },
+          "hide5": {
+            "type": "string"
+          },
+          "hide6": {
+            "type": "string"
+          },
+          "cpc": {
+            "type": "string",
+            "description": "Default click cost"
+          },
+          "cur": {
+            "type": "string",
+            "description": "Default currency (default usd)"
+          },
+          "pbglobal": {
+            "type": "string",
+            "description": "Global outbound postback URL"
+          },
+          "pbnew": {
+            "type": "string",
+            "description": "Outbound postback URL fired on new lead"
+          },
+          "pbhold": {
+            "type": "string",
+            "description": "Outbound postback URL fired on hold"
+          },
+          "pbapprove": {
+            "type": "string",
+            "description": "Outbound postback URL fired on approve"
+          },
+          "pbcancel": {
+            "type": "string",
+            "description": "Outbound postback URL fired on cancel"
+          },
+          "pbtrash": {
+            "type": "string",
+            "description": "Outbound postback URL fired on trash"
+          },
+          "param": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Placeholder names ([[name]]) used in the value templates"
+          }
+        }
+      },
+      "StatsRow": {
+        "type": "object",
+        "description": "Statistics for one grouping value",
+        "properties": {
+          "click": {
+            "type": "integer",
+            "description": "Total clicks"
+          },
+          "unique": {
+            "type": "integer",
+            "description": "Unique clicks"
+          },
+          "next": {
+            "type": "integer",
+            "description": "Second-step clicks"
+          },
+          "spend": {
+            "type": "number",
+            "description": "Total click cost"
+          },
+          "cn": {
+            "type": "integer",
+            "description": "New leads (status 1)"
+          },
+          "ch": {
+            "type": "integer",
+            "description": "Hold leads (status 2)"
+          },
+          "ca": {
+            "type": "integer",
+            "description": "Approved leads (status 3)"
+          },
+          "cc": {
+            "type": "integer",
+            "description": "Cancelled leads (status 4)"
+          },
+          "ct": {
+            "type": "integer",
+            "description": "Trash leads (status 5)"
+          },
+          "ma": {
+            "type": "number",
+            "description": "Approved money sum"
+          },
+          "mh": {
+            "type": "number"
+          },
+          "mt": {
+            "type": "number"
+          },
+          "mch": {
+            "type": "number"
+          },
+          "mca": {
+            "type": "number"
+          },
+          "mct": {
+            "type": "number"
+          },
+          "mmt": {
+            "type": "number"
+          },
+          "mmh": {
+            "type": "number"
+          },
+          "mma": {
+            "type": "number"
+          },
+          "cv": {
+            "type": "integer",
+            "description": "Valid leads (non-trash)"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "ur": {
+            "type": "number",
+            "description": "Unique ratio %"
+          },
+          "cr": {
+            "type": "number",
+            "description": "Conversion rate %"
+          },
+          "crt": {
+            "type": "number"
+          },
+          "epc": {
+            "type": "number",
+            "description": "Earnings per click"
+          },
+          "epl": {
+            "type": "number"
+          },
+          "appr": {
+            "type": "number",
+            "description": "Approval rate %"
+          },
+          "app": {
+            "type": "number"
+          },
+          "per": {
+            "type": "number"
+          },
+          "cpc": {
+            "type": "number"
+          },
+          "cpa": {
+            "type": "number"
+          },
+          "cpv": {
+            "type": "number"
+          },
+          "cpl": {
+            "type": "number"
+          },
+          "profit": {
+            "type": "number"
+          },
+          "roi": {
+            "type": "number"
+          },
+          "roic": {
+            "type": "string",
+            "description": "ROI color label (green/yellow/red)"
+          },
+          "goal1": {
+            "type": "object",
+            "description": "Goal breakdown (only when goal is configured)",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "cr": {
+                "type": "number"
+              },
+              "part": {
+                "type": "number"
+              }
+            }
+          },
+          "event1": {
+            "type": "object",
+            "description": "Event breakdown (only when events are configured)",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "cr": {
+                "type": "number"
+              },
+              "crt": {
+                "type": "number"
+              },
+              "crn": {
+                "type": "number"
+              },
+              "dr": {
+                "type": "number"
+              },
+              "drt": {
+                "type": "number"
+              },
+              "drn": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "Lead": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp"
+          },
+          "click": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Symbolic click ID or false"
+          },
+          "uid": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Advertiser-side lead ID or false"
+          },
+          "flow": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Symbolic flow code"
+          },
+          "way": {
+            "type": "integer"
+          },
+          "site": {
+            "type": "integer"
+          },
+          "siteurl": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "filter": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "description": "Localized status string (not canonical code). Use st= filter for programmatic filtering."
+          },
+          "custom": {
+            "type": "string",
+            "description": "Raw advertiser status text"
+          },
+          "goal": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "costcur": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "geo": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "os": {
+            "type": "integer",
+            "description": "Numeric OS ID detected from the stored user-agent (0=Other, 1=Windows, 2=macOS, 3=Linux, 4=iOS, 5=Android, 6=WindowsMobile, 7=Symbian, 8=BlackBerry); 0 if no UA was stored"
+          },
+          "browser": {
+            "type": "integer",
+            "description": "Numeric browser ID detected from the stored user-agent (0=Other, 1=Chrome, 2=Firefox, 3=IE, 4=Safari, 5=Opera, 6=Edge, 7=Facebook, 8=Instagram, 9=TikTok, 10=WebView, 11=Bot); 0 if no UA was stored"
+          },
+          "ua": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "meta": {
+            "type": "object"
+          },
+          "adid": {
+            "type": "string"
+          },
+          "data1": {
+            "type": "string"
+          },
+          "data2": {
+            "type": "string"
+          },
+          "data3": {
+            "type": "string"
+          },
+          "data4": {
+            "type": "string"
+          },
+          "data5": {
+            "type": "string"
+          },
+          "utm_source": {
+            "type": "string"
+          },
+          "utm_campaign": {
+            "type": "string"
+          },
+          "utm_content": {
+            "type": "string"
+          },
+          "utm_term": {
+            "type": "string"
+          },
+          "utm_medium": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "subid": {
+            "type": "string"
+          },
+          "customer": {
+            "type": "string"
+          }
+        }
+      },
+      "Click": {
+        "type": "object",
+        "description": "One raw traffic-log entry. Unlike Lead, every row here is a click regardless of whether it produced a lead.",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp"
+          },
+          "click": {
+            "type": "string",
+            "description": "Symbolic click code (always present)"
+          },
+          "flow": {
+            "type": "string",
+            "description": "Symbolic flow code"
+          },
+          "offer": {
+            "type": "integer"
+          },
+          "way": {
+            "type": "integer"
+          },
+          "site": {
+            "type": "integer"
+          },
+          "sitenext": {
+            "type": "integer",
+            "description": "Numeric ID of the second-step site"
+          },
+          "siteurl": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Computed site URL, or false when the click has no site"
+          },
+          "filter": {
+            "type": "integer",
+            "description": "Click filter code (0 = passed all filters)"
+          },
+          "unique": {
+            "type": "boolean"
+          },
+          "next": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "geo": {
+            "type": "string"
+          },
+          "mobile": {
+            "type": "boolean"
+          },
+          "os": {
+            "type": "integer",
+            "description": "Numeric OS ID detected from the stored user-agent (0=Other, 1=Windows, 2=macOS, 3=Linux, 4=iOS, 5=Android, 6=WindowsMobile, 7=Symbian, 8=BlackBerry); 0 if no UA was stored"
+          },
+          "browser": {
+            "type": "integer",
+            "description": "Numeric browser ID detected from the stored user-agent (0=Other, 1=Chrome, 2=Firefox, 3=IE, 4=Safari, 5=Opera, 6=Edge, 7=Facebook, 8=Instagram, 9=TikTok, 10=WebView, 11=Bot); 0 if no UA was stored"
+          },
+          "ua": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "adid": {
+            "type": "string"
+          },
+          "data1": {
+            "type": "string"
+          },
+          "data2": {
+            "type": "string"
+          },
+          "data3": {
+            "type": "string"
+          },
+          "data4": {
+            "type": "string"
+          },
+          "data5": {
+            "type": "string"
+          },
+          "utm_source": {
+            "type": "string"
+          },
+          "utm_campaign": {
+            "type": "string"
+          },
+          "utm_content": {
+            "type": "string"
+          },
+          "utm_term": {
+            "type": "string"
+          },
+          "utm_medium": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "subid": {
+            "type": "string"
+          },
+          "customer": {
+            "type": "string"
+          }
+        }
+      },
+      "TdsResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "uid",
+          "way",
+          "method",
+          "url"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "uid": {
+            "type": "string",
+            "description": "Flow symbolic code"
+          },
+          "way": {
+            "description": "Selected way ID. String with comma-separated history when rotor is enabled.",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "http302",
+              "http301",
+              "redirect",
+              "jsgo",
+              "iframe",
+              "proxy",
+              "curl",
+              "local",
+              "site",
+              "error",
+              "blank",
+              "raw"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "URL to redirect/display (macros substituted)"
+          },
+          "nocookie": {
+            "type": "boolean",
+            "description": "If true, client must not set cookies"
+          },
+          "params": {
+            "type": "object",
+            "description": "Macro values for URL substitution",
+            "properties": {
+              "click": {
+                "type": "string"
+              },
+              "flow": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "geo": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "next": {
+                "type": "string"
+              },
+              "local": {
+                "type": "string"
+              },
+              "direct": {
+                "type": "string"
+              },
+              "adid": {
+                "type": "string"
+              },
+              "data1": {
+                "type": "string"
+              },
+              "data2": {
+                "type": "string"
+              },
+              "data3": {
+                "type": "string"
+              },
+              "data4": {
+                "type": "string"
+              },
+              "data5": {
+                "type": "string"
+              },
+              "subid": {
+                "type": "string"
+              },
+              "customer": {
+                "type": "string"
+              },
+              "utm_source": {
+                "type": "string"
+              },
+              "utm_campaign": {
+                "type": "string"
+              },
+              "utm_content": {
+                "type": "string"
+              },
+              "utm_term": {
+                "type": "string"
+              },
+              "utm_medium": {
+                "type": "string"
+              },
+              "esub": {
+                "type": "string"
+              },
+              "eutms": {
+                "type": "string"
+              },
+              "eutmc": {
+                "type": "string"
+              },
+              "eutmn": {
+                "type": "string"
+              },
+              "eutmt": {
+                "type": "string"
+              },
+              "eutmm": {
+                "type": "string"
+              },
+              "eutmu": {
+                "type": "string"
+              },
+              "ed1": {
+                "type": "string"
+              },
+              "ed2": {
+                "type": "string"
+              },
+              "ed3": {
+                "type": "string"
+              },
+              "ed4": {
+                "type": "string"
+              },
+              "ed5": {
+                "type": "string"
+              },
+              "hide1": {
+                "type": "string"
+              },
+              "hide2": {
+                "type": "string"
+              },
+              "hide3": {
+                "type": "string"
+              },
+              "hide4": {
+                "type": "string"
+              },
+              "hide5": {
+                "type": "string"
+              },
+              "hide6": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/tracker/postback.json": {
+      "post": {
+        "operationId": "trackerPostback",
+        "summary": "Receive lead postback",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Creates a new lead or updates an existing one matched by click code, subid+flow, or uid+flow. Triggers postback fan-out to per-event URLs configured on the flow.\n\nParameter merge: primary fields use POST-then-GET priority; tag fields use a GET-wins override — intentional asymmetry.\n\nError codes by HTTP status: 400 no-changes; 403 access; 404 no-click, bad-click, bad-flow; 500 db.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "click": {
+                    "type": "string",
+                    "description": "Symbolic click code. If negative value, treated as way ID. Required if no flow."
+                  },
+                  "flow": {
+                    "type": "string",
+                    "description": "Symbolic flow code. Required if no click."
+                  },
+                  "uid": {
+                    "type": "string",
+                    "description": "Advertiser-side lead ID. Dedup key. Required when using flow+uid combo."
+                  },
+                  "subid": {
+                    "type": "string",
+                    "description": "SubID dedup key when using flow-only identification."
+                  },
+                  "way": {
+                    "type": "integer"
+                  },
+                  "site": {
+                    "type": "integer"
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "geo": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 2
+                  },
+                  "ua": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "Advertiser status string, mapped to the tracker's lead statuses"
+                  },
+                  "goal": {
+                    "type": "string",
+                    "description": "Goal code (configured in tracker settings)"
+                  },
+                  "convert": {
+                    "type": "string",
+                    "description": "ISO currency to convert price to"
+                  },
+                  "costconv": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "default": "usd"
+                  },
+                  "costcur": {
+                    "type": "string",
+                    "default": "usd"
+                  },
+                  "price": {
+                    "type": "number",
+                    "description": "Lead payout (overrides existing)"
+                  },
+                  "addprice": {
+                    "type": "number",
+                    "description": "Amount to add to existing price"
+                  },
+                  "cost": {
+                    "type": "number"
+                  },
+                  "addcost": {
+                    "type": "number"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string"
+                  },
+                  "adid": {
+                    "type": "string"
+                  },
+                  "data1": {
+                    "type": "string"
+                  },
+                  "data2": {
+                    "type": "string"
+                  },
+                  "data3": {
+                    "type": "string"
+                  },
+                  "data4": {
+                    "type": "string"
+                  },
+                  "data5": {
+                    "type": "string"
+                  },
+                  "utm_source": {
+                    "type": "string"
+                  },
+                  "utm_campaign": {
+                    "type": "string"
+                  },
+                  "utm_content": {
+                    "type": "string"
+                  },
+                  "utm_term": {
+                    "type": "string"
+                  },
+                  "utm_medium": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "string"
+                  },
+                  "subid_": {
+                    "type": "string"
+                  },
+                  "customer": {
+                    "type": "string"
+                  },
+                  "stn": {
+                    "type": "string",
+                    "description": "CSV of advertiser status strings mapped to new"
+                  },
+                  "sth": {
+                    "type": "string",
+                    "description": "CSV → hold"
+                  },
+                  "sta": {
+                    "type": "string",
+                    "description": "CSV → approve"
+                  },
+                  "stc": {
+                    "type": "string",
+                    "description": "CSV → cancel"
+                  },
+                  "stt": {
+                    "type": "string",
+                    "description": "CSV → trash"
+                  },
+                  "create": {
+                    "type": "string",
+                    "enum": [
+                      "1"
+                    ],
+                    "description": "Force creation of new lead instead of dedup-update"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lead created/updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "id"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "id": {
+                      "type": "integer",
+                      "description": "Lead ID"
+                    },
+                    "create": {
+                      "type": "boolean",
+                      "description": "true = new lead created, false = existing updated"
+                    },
+                    "stage": {
+                      "$ref": "#/components/schemas/LeadStage"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "id": 1337,
+                  "create": true,
+                  "stage": "new"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/postbacks/{key}": {
+      "post": {
+        "operationId": "postbackShort",
+        "summary": "Short-form postback URL",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Alternative postback URL. Positive key = user postback (delegates to tracker/postback). Negative key = gang postback (delegates to gangs/postback). The key is from flow.postback.* URL templates.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Encoded flow key. Positive = user scope, negative = gang scope."
+          }
+        ],
+        "requestBody": {
+          "description": "Same parameters as tracker/postback",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/postback (positive key) or gangs/postback (negative key); errors use the HTTP statuses of those functions. An empty, unknown or foreign key is rejected before the API runs: HTTP 200 with {status:\"error\", error:\"wrong-code\", info:\"empty\"|\"bad-user\"|\"bad-gang\"}."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/stats.json": {
+      "get": {
+        "operationId": "trackerStats",
+        "summary": "Click + lead statistics",
+        "tags": [
+          "Tracker Statistics"
+        ],
+        "description": "Returns aggregated statistics grouped by the chosen item dimension. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — when show is set the stats map is cut to the requested page; the response always echoes page, show, and items (total row count before paging). Sorting (sort/order) is applied to the full result set before paging. Error codes by HTTP status: 400 payment-required, no-item, no-from, no-to.",
+        "parameters": [
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "date",
+                "hour",
+                "flow",
+                "way",
+                "site",
+                "filter",
+                "geo",
+                "mobile",
+                "os",
+                "browser",
+                "ip",
+                "utmd",
+                "subid",
+                "utms",
+                "utmc",
+                "utmn",
+                "utmt",
+                "utmm",
+                "utmu",
+                "user"
+              ]
+            },
+            "description": "Grouping dimension"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date YYYY-MM-DD"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date YYYY-MM-DD"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic flow code"
+          },
+          {
+            "name": "f",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric flow ID (overrides flow)"
+          },
+          {
+            "name": "way",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "-1 = any non-zero"
+          },
+          {
+            "name": "hour",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            }
+          },
+          {
+            "name": "mobile",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "os",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "geo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subid",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customer",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_campaign",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_content",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_term",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_medium",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cur",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Currency for money columns (also: curr, currency)"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Gang scope only: filter by team member"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "id",
+                "click",
+                "unique",
+                "spend",
+                "next",
+                "cn",
+                "ch",
+                "ca",
+                "cc",
+                "ct",
+                "cv",
+                "total",
+                "mt",
+                "mh",
+                "ma",
+                "mmt",
+                "mmh",
+                "mma",
+                "mct",
+                "mch",
+                "mca",
+                "ur",
+                "cr",
+                "crt",
+                "epc",
+                "epl",
+                "appr",
+                "app",
+                "per",
+                "cpc",
+                "cpa",
+                "cpv",
+                "cpl",
+                "profit",
+                "roi"
+              ]
+            },
+            "description": "Column to sort by, applied before pagination. Unknown value falls back to name. Absent -> no sorting (natural order)."
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Sort direction; only asc (case-insensitive) reverses the default desc."
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Rows per page; presence enables pagination (0/empty -> 100). Absent -> all rows, show=-1 in response."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-based page number (with show)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistics object. Note: payment-required answers HTTP 400 (not 402).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "stats",
+                    "total",
+                    "page",
+                    "show",
+                    "items"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "stats": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/StatsRow"
+                      },
+                      "description": "Keys are grouping values (e.g. YYYYMMDD for date, country code for geo)"
+                    },
+                    "total": {
+                      "$ref": "#/components/schemas/StatsRow"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Echoed 1-based page number"
+                    },
+                    "show": {
+                      "type": "integer",
+                      "description": "Echoed page size, or -1 when pagination was not requested"
+                    },
+                    "items": {
+                      "type": "integer",
+                      "description": "Total number of grouping rows before paging"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/leads.json": {
+      "get": {
+        "operationId": "trackerLeads",
+        "summary": "Leads list",
+        "tags": [
+          "Tracker Statistics"
+        ],
+        "description": "Returns leads matching filters. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching leads; without show, all matching leads are returned (show=-1, hard-capped at 10000 rows) so pass show to avoid hitting the cap on large pulls. sort/order are applied by the database.\n\nBoth goal= (symbolic code, e.g. 'main') and gl= (numeric goal ID) work. goal= is resolved to the numeric goal ID of the user; if the code is unknown, the filter is silently ignored.\n\nError codes by HTTP status: 400 payment-required.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Filter by lead date (YYYY-MM-DD)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "ufrom",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by lead time (Unix timestamp)"
+          },
+          {
+            "name": "uto",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "geo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "f",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric flow ID"
+          },
+          {
+            "name": "way",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "c",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric click ID"
+          },
+          {
+            "name": "st",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "description": "Lead status: 1=new, 2=hold, 3=approve, 4=cancel, 5=trash"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "gl",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric goal ID."
+          },
+          {
+            "name": "goal",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic goal code (e.g. 'main'), resolved to the numeric goal ID. If unknown, filter is silently ignored."
+          },
+          {
+            "name": "click",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic click code"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic flow code"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "new",
+                "hold",
+                "approve",
+                "cancel",
+                "trash",
+                "valid",
+                "wait",
+                "good",
+                "bad"
+              ]
+            },
+            "description": "Status group filter"
+          },
+          {
+            "name": "utm_source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_campaign",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_content",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_term",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_medium",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subid",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customer",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Gang scope only: restrict to team member"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "lead_id",
+                "time",
+                "date",
+                "status",
+                "filter",
+                "goal",
+                "price",
+                "cost",
+                "geo",
+                "flow",
+                "way",
+                "site"
+              ]
+            },
+            "description": "Column to sort by. Accepted keys: id/lead_id (lead ID), time/date (lead time), status, filter, goal, price, cost, geo, flow, way, site. Unknown key -> sorted by lead ID. Absent -> no ordering."
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Sort direction; only asc (case-insensitive) gives ASC."
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Rows per page; show>0 enables paging. Absent/0 -> all rows (capped at 10000), show=-1 in response."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-based page number (with show)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lead array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "leads",
+                    "page",
+                    "show",
+                    "total"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "leads": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Lead"
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Echoed 1-based page number"
+                    },
+                    "show": {
+                      "type": "integer",
+                      "description": "Echoed page size, or -1 when pagination was not requested"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total matching leads (full number of matches when paginated, else the number of returned rows)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/clicks.json": {
+      "get": {
+        "operationId": "trackerClicks",
+        "summary": "Raw click list (traffic log)",
+        "tags": [
+          "Tracker Statistics"
+        ],
+        "description": "Returns click records — the traffic hitting flows — regardless of whether they produced a lead. The click-level analogue of tracker/leads: same filter/pagination/sorting mechanics. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching clicks; without show, all matching clicks are returned (show=-1, hard-capped at 10000 rows). sort/order are applied by the database.\n\nIMPORTANT: the response array key is 'data', not 'leads' (contrast with tracker/leads).\n\nError codes by HTTP status: 400 payment-required.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Filter by click date (YYYY-MM-DD)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "ufrom",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by click time (Unix timestamp)"
+          },
+          {
+            "name": "uto",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "geo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Matched through a 32-bit hash of the IP address"
+          },
+          {
+            "name": "f",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric flow ID"
+          },
+          {
+            "name": "way",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offer",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric offer ID"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric click filter code"
+          },
+          {
+            "name": "mobile",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric device flag"
+          },
+          {
+            "name": "os",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric OS ID"
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric browser ID"
+          },
+          {
+            "name": "unique",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric unique flag"
+          },
+          {
+            "name": "next",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric second-step flag"
+          },
+          {
+            "name": "utm_source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_campaign",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_content",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_term",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_medium",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subid",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customer",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "click",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic click code"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic flow code"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Gang scope only: restrict to team member"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "click_id",
+                "time",
+                "date",
+                "filter",
+                "price",
+                "geo",
+                "mobile",
+                "os",
+                "browser",
+                "flow",
+                "way",
+                "site"
+              ]
+            },
+            "description": "Column to sort by. Accepted keys: id/click_id (click ID), time/date (click time), filter, price, geo, mobile, os, browser, flow, way, site. Unknown key -> sorted by click ID. Absent -> no ordering."
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Sort direction; only asc (case-insensitive) gives ASC."
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Rows per page; show>0 enables paging. Absent/0 -> all rows (capped at 10000), show=-1 in response."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-based page number (with show)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Click array (key 'data').",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data",
+                    "page",
+                    "show",
+                    "total"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Click"
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Echoed 1-based page number"
+                    },
+                    "show": {
+                      "type": "integer",
+                      "description": "Echoed page size, or -1 when pagination was not requested"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total matching clicks (full number of matches when paginated, else the number of returned rows)"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "page": 1,
+                  "show": 100,
+                  "total": 2048,
+                  "data": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/spend.json": {
+      "post": {
+        "operationId": "trackerSpend",
+        "summary": "Import click spend (CPC)",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Bulk-updates the price (cost) of the matching clicks. Supports batch mode via batch[] array in POST/JSON. Error codes by HTTP status: 404 empty.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cpc": {
+                    "type": "number",
+                    "description": "Price per click (one of cpc/cost/zero required)"
+                  },
+                  "cost": {
+                    "type": "number",
+                    "description": "Total cost (divided by click count)"
+                  },
+                  "zero": {
+                    "description": "Truthy = set price to 0",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "1"
+                        ]
+                      }
+                    ]
+                  },
+                  "currency": {
+                    "type": "string",
+                    "default": "usd"
+                  },
+                  "from": {
+                    "type": "string",
+                    "description": "Date range start (YYYY-MM-DD, Unix timestamp, or any date string PHP strtotime understands)"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "flow": {
+                    "description": "Symbolic flow code(s)",
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "way": {
+                    "description": "Way ID(s)",
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      }
+                    ]
+                  },
+                  "geo": {
+                    "type": "string"
+                  },
+                  "utm_source": {
+                    "type": "string"
+                  },
+                  "utm_campaign": {
+                    "type": "string"
+                  },
+                  "utm_content": {
+                    "type": "string"
+                  },
+                  "utm_term": {
+                    "type": "string"
+                  },
+                  "utm_medium": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "string"
+                  },
+                  "subid": {
+                    "type": "string"
+                  },
+                  "customer": {
+                    "type": "string"
+                  },
+                  "filter": {
+                    "type": "integer"
+                  },
+                  "valid": {
+                    "description": "Only clicks that passed all filters (click filter code 0)",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "unique": {
+                    "description": "Only unique clicks",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "user": {
+                    "description": "Admin: target user ID or 'any' to remove user filter",
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "any"
+                        ]
+                      }
+                    ]
+                  },
+                  "wm": {
+                    "type": "integer",
+                    "description": "Gang scope: synonym for user"
+                  },
+                  "gang": {
+                    "description": "Webmaster gang admin: opt into gang scope",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "batch": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "cpc": {
+                          "type": "number"
+                        },
+                        "cost": {
+                          "type": "number"
+                        },
+                        "zero": {},
+                        "flow": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "description": "Array of spend items for batch import"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Counts of ok/bad items.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "ok": {
+                      "type": "integer",
+                      "description": "Successful items count"
+                    },
+                    "bad": {
+                      "type": "integer",
+                      "description": "Failed items count"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "ok": 3,
+                  "bad": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/settings.json": {
+      "post": {
+        "operationId": "trackerSettings",
+        "summary": "Update tracker storage config",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Saves per-user or per-gang tracker configuration. At least one parameter required. No gangs/ alias — team admins use scope=gang (a field of the POST body here, not the query-string scope); any other caller sending scope=gang gets scope and nothing is written. Error codes by HTTP status: 400 scope, no-params.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "gang"
+                    ],
+                    "description": "gang = save the team's config block; team admins only, else error scope (nothing is written). Default user."
+                  },
+                  "storage": {
+                    "description": "Enable external storage server"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "Storage domain name"
+                  },
+                  "control": {
+                    "type": "string",
+                    "description": "Control script URL"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "Control script key"
+                  },
+                  "ips": {
+                    "type": "string",
+                    "description": "Allowed control IPs"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/templates.json": {
+      "get": {
+        "operationId": "trackerTemplates",
+        "summary": "CPA-network postback templates",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Read-only dump of the postback-template reference book (presets for CPA networks / affiliate programs shown in the flow editor). No parameters. The body merges the built-in book (refreshed every 10 minutes by the tracker's scheduled job) and the user-generated book (IDs offset by +10000); both share the same field set. Each pb* value is a query string without the leading '?': the final network callback URL is {postback_base}?{pb*} with [[placeholder]] macros (from param) substituted.",
+        "responses": {
+          "200": {
+            "description": "Templates object keyed by numeric template ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/PostbackTemplate"
+                      },
+                      "description": "Keys are numeric template IDs (user-generated IDs offset by +10000)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/tracker/networks.json": {
+      "get": {
+        "operationId": "trackerNetworks",
+        "summary": "Traffic-source presets",
+        "tags": [
+          "Tracker Integration"
+        ],
+        "description": "Read-only dump of the traffic-source (ad network) reference book shown in the flow editor. No parameters. The body merges the built-in book (refreshed every 10 minutes by the tracker's scheduled job) and the user-generated book (IDs offset by +10000); both share the same field set. Value templates may embed [[placeholder]] macros substituted when the source is applied to a flow. Note: networks use long postback keys (pbglobal/pbnew/...) whereas templates use short codes (pb/pbn/...).",
+        "responses": {
+          "200": {
+            "description": "Traffic sources object keyed by numeric source ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/TrafficSource"
+                      },
+                      "description": "Keys are numeric source IDs (user-generated IDs offset by +10000)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/postback.json": {
+      "post": {
+        "operationId": "gangsPostback",
+        "summary": "Team-scope postback",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Identical to tracker/postback but operates in gang scope. Caller must be the gang admin. Additional errors: no-gang (caller not in team), access (not admin).",
+        "requestBody": {
+          "description": "Same as tracker/postback",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/postback. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/stats.json": {
+      "get": {
+        "operationId": "gangsStats",
+        "summary": "Team-scope statistics",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Same as tracker/stats but scoped to the gang. Optional user= to drill into a specific team member.",
+        "parameters": [
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by specific team member"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/stats. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/leads.json": {
+      "get": {
+        "operationId": "gangsLeads",
+        "summary": "Team-scope leads list",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Same as tracker/leads but scoped to the gang. Optional user= to filter by team member.",
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/leads. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/clicks.json": {
+      "get": {
+        "operationId": "gangsClicks",
+        "summary": "Team-scope raw click list",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Same as tracker/clicks but scoped to the gang (identical structure to gangs/leads). Scoped to the team's clicks; optional user= filters by team member.",
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/clicks (key 'data'). Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/spend.json": {
+      "post": {
+        "operationId": "gangsSpend",
+        "summary": "Team-scope spend import",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Same as tracker/spend but scoped to the gang. wm/user targets a specific team member; without them, applied across the whole gang.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/spend. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/track-tds/{flow_code}": {
+      "post": {
+        "operationId": "clickTds",
+        "summary": "TDS — register click by flow code",
+        "tags": [
+          "Click API (TDS)"
+        ],
+        "security": [],
+        "description": "Called by server.php installed on the client's domain. Posts visitor's $_SERVER superglobal (form-encoded) + cookie field. No API token auth — the flow code in the path is the identifier.",
+        "parameters": [
+          {
+            "name": "flow_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alphanumeric encoded flow code (e.g. ef1c)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "All $_SERVER keys + cookie array, form-encoded. Use http_build_query($_SERVER) + '&cookie=' + json_encode($_COOKIE).",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "HTTP_USER_AGENT": {
+                    "type": "string"
+                  },
+                  "HTTP_HOST": {
+                    "type": "string"
+                  },
+                  "REMOTE_ADDR": {
+                    "type": "string"
+                  },
+                  "QUERY_STRING": {
+                    "type": "string",
+                    "description": "Contains UTM params, subid, adid, cpc, cur, data1-5, next"
+                  },
+                  "cookie": {
+                    "type": "string",
+                    "description": "JSON-encoded $_COOKIE array"
+                  }
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TdsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "redirect": {
+                    "value": {
+                      "status": "ok",
+                      "uid": "ef1c",
+                      "way": 42,
+                      "method": "http302",
+                      "url": "https://offer.com/?click=ca1337",
+                      "nocookie": false,
+                      "params": {
+                        "click": "ca1337",
+                        "flow": "ef1c",
+                        "user": "7",
+                        "geo": "us",
+                        "query": "utm_source=fb"
+                      }
+                    }
+                  },
+                  "trafficback": {
+                    "value": {
+                      "status": "ok",
+                      "uid": "ef1c",
+                      "way": 0,
+                      "method": "http302",
+                      "url": "https://back.example.com/",
+                      "nocookie": true,
+                      "params": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "TDS response or error (no-id, bad-id, bad-flow, no-ways, no-data, db)."
+          }
+        }
+      }
+    },
+    "/track-dom/{domain}": {
+      "post": {
+        "operationId": "clickDom",
+        "summary": "TDS — register click by parked domain",
+        "tags": [
+          "Click API (TDS)"
+        ],
+        "security": [],
+        "description": "Same as track-tds but looks up flow by parked domain. If REQUEST_URI contains a filename, serves domain verification files instead.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain hostname"
+          }
+        ],
+        "requestBody": {
+          "description": "Same as /track-tds/",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Same TDS response or error. Additional errors: no-domain, bad-path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TdsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/track-pxl/{flow_code}": {
+      "post": {
+        "operationId": "clickPixel",
+        "summary": "TDS — pixel on event",
+        "tags": [
+          "Click API (TDS)"
+        ],
+        "security": [],
+        "description": "Tracking pixel for events. Also accessible as /{uid}/pixel, /{uid}/pixel.gif, /{uid}/pixel.png, /{uid}/pixel.json. Uses cookie x{uid} to find the click.",
+        "parameters": [
+          {
+            "name": "flow_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cookie": {
+                    "type": "string",
+                    "description": "JSON-encoded $_COOKIE (must contain x{uid} key with encoded click ID)"
+                  },
+                  "get": {
+                    "type": "string",
+                    "description": "QUERY_STRING value with postback fields: uid, status, goal, price, currency, name, phone, email, etc."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "1×1 GIF image (.gif default), PNG (.png), or JSON (.json). HTTP 418 on lead error, 404 on critical error."
+          }
+        }
+      }
+    },
+    "/track-thx/{flow_code}": {
+      "post": {
+        "operationId": "clickThanks",
+        "summary": "TDS — pixel on approval",
+        "tags": [
+          "Click API (TDS)"
+        ],
+        "security": [],
+        "description": "Same as track-pxl but automatically sets status=approve. Also accessible as /{uid}/thanks, /{uid}/success.",
+        "parameters": [
+          {
+            "name": "flow_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Same as track-pxl",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "1×1 GIF, PNG, or JSON. status=approve is set automatically."
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Tracker Integration",
+      "description": "Postback receiver, spend import, and configuration"
+    },
+    {
+      "name": "Tracker Statistics",
+      "description": "Aggregated stats and lead/click reports"
+    },
+    {
+      "name": "Gangs (Team Scope)",
+      "description": "Team-scope wrappers over tracker functions. Require gang admin role."
+    },
+    {
+      "name": "Click API (TDS)",
+      "description": "Client-side click registration routes. No standard API auth — called by server.php on client's domain."
+    }
+  ]
+}

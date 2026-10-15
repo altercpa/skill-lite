@@ -1,0 +1,90 @@
+# AlterCPA Lite API — скилл для Claude
+
+**Дайте ИИ-ассистенту полный API AlterCPA Lite: каждый метод, параметр и код ошибки, плюс спецификации OpenAPI.**
+
+[![License: MIT](https://img.shields.io/github/license/altercpa/skill-lite)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/altercpa/skill-lite)](https://github.com/altercpa/skill-lite/releases/latest)
+
+[English](README.md) · **Русский**
+
+![Кошка Пурь у латунного коммутатора сортирует светящиеся капли-клики по линиям — обложка скилла AlterCPA Lite API](.github/assets/cover.jpg)
+
+## Что это
+
+[AlterCPA Lite](https://www.altercpa.pro) — серверный трекер конверсий для арбитража трафика.
+Это **скилл** для [Claude](https://claude.com), который обучает его HTTP API трекера. Просто опишите
+задачу — интеграцию, скрипт или отчёт — и Claude напишет запросы с правильными методами, параметрами и
+обработкой ошибок, а не будет угадывать.
+
+## Что умеет
+
+| Область | Что можно делать |
+|---|---|
+| **Потоки, сайты, домены** | кампании трекинга, настройка сайтов, припаркованные домены |
+| **Фильтрация и клоака** | метод фильтра, кампании фильтрации, журнал визитов, статистика проверенных визитов |
+| **Чёрные списки** | списки блокировки по IP, сетям и заголовкам |
+| **Данные трекера** | клики, лиды, статистика, шаблоны постбеков, справочники источников трафика |
+| **Коннекторы расходов** | импорт затрат из Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin, FBtool, MixAdvert, AdPartner |
+| **API хаков** | пиксели Facebook и TikTok Conversions API, офлайн-конверсии Google Ads, Postback 2.0 (HTTP и Telegram) |
+| **Аккаунт и система** | профиль, регистрация и восстановление пароля; проверка доступности, пользователи, часовой пояс |
+
+## Установка
+
+### Claude Code
+
+Скачайте [`altercpa-lite-api-skill.zip`](https://github.com/altercpa/skill-lite/releases/latest/download/altercpa-lite-api-skill.zip)
+и распакуйте в папку скиллов:
+
+```sh
+unzip altercpa-lite-api-skill.zip -d ~/.claude/skills/     # для всех проектов
+unzip altercpa-lite-api-skill.zip -d .claude/skills/       # только для этого проекта
+```
+
+В Windows распакуйте в `%USERPROFILE%\.claude\skills\`.
+
+Предпочитаете git? Клонируйте прямо в папку скиллов — обновление сводится к `git pull`:
+
+```sh
+git clone https://github.com/altercpa/skill-lite.git ~/.claude/skills/altercpa-lite-api
+```
+
+### Claude.ai и Claude Desktop
+
+В настройках Claude добавьте собственный скилл и загрузите тот же zip.
+
+## Как пользоваться
+
+Вызывать ничего не нужно — Claude подключает скилл сам, когда запрос касается API AlterCPA Lite.
+Например:
+
+- *Напиши скрипт на Python, который выгружает вчерашнюю статистику кликов и лидов из моего AlterCPA Lite в CSV.*
+- *Как добавить IP-адрес в чёрный список через API? Покажи вызов curl.*
+- *Настрой отправку постбеков в Facebook Conversions API для моего потока.*
+
+Все вызовы устроены одинаково; токен — это `{user_id}-{api_key}` со страницы профиля вашего трекера:
+
+```
+https://{tracker}/api/{app}/{func}.json?id={token}
+```
+
+## Обновления
+
+Релизы помечаются тегами `vГГГГ.ММ.ДД`. Подпишитесь на репозиторий (*Watch → Custom → Releases*), чтобы
+получать уведомления, затем скачайте новый zip — или выполните `git pull`, если клонировали.
+
+## Что внутри
+
+| Путь | Что |
+|---|---|
+| [`SKILL.md`](SKILL.md) | точка входа скилла |
+| [`references/`](references) | справочник, по файлу на область API |
+| [`spec/`](spec) | спецификации OpenAPI 3.1, по файлу на область |
+| [`docs/en/`](docs/en) · [`docs/ru/`](docs/ru) | документация по API: исходники в Markdown с картинками |
+
+Ссылки вида `/track-flows` в документации ведут на разделы вашей собственной установки трекера.
+
+## Лицензия
+
+[MIT](LICENSE) — используйте, копируйте, меняйте, распространяйте.
+
+Иллюстрации с маскотом в [`.github/assets/`](.github/assets) — © AlterCPA, лицензия MIT на них не распространяется.

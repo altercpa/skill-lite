@@ -1,0 +1,2292 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Flows & Ways API",
+    "version": "1.0.0",
+    "description": "Manage flows (traffic channels) and ways (destination paths within flows). All endpoints support scope parameter (must be in GET query string even when POSTing JSON). Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ]
+        },
+        "description": "Access scope. Must be in GET query string even when body is JSON. Default: user."
+      },
+      "FlowId": {
+        "name": "fid",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        },
+        "description": "Numeric flow ID. Alternative: flow= (symbolic code like ef1c)."
+      },
+      "FlowCode": {
+        "name": "flow",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Symbolic flow code (e.g. ef1c). Alternative: fid= (numeric)."
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, user-required, limit-reached, no-name, no-way, create, add, access-denied, wrong-user, wrong-way; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "scope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (flow or way id missing), bad-id (flow not found).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "bad-id"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "scope, unpaid, no-id, bad-id, wrong-way, access-denied, wrong-user, no-name, no-way, limit-reached, user-required, create, add"
+          }
+        }
+      },
+      "FlowFilter": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "type": "integer",
+            "description": "Cloaking filter campaign ID"
+          },
+          "bots": {
+            "type": "boolean"
+          },
+          "filters": {
+            "type": "boolean"
+          },
+          "geo": {
+            "type": "boolean"
+          },
+          "lang": {
+            "type": "boolean"
+          },
+          "adid": {
+            "type": "boolean"
+          },
+          "geos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed country codes"
+          },
+          "url": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "site": {
+            "type": "integer",
+            "description": "Traffic-back site ID"
+          },
+          "spath": {
+            "type": [
+              "boolean",
+              "string"
+            ],
+            "description": "Path to white site on storage"
+          },
+          "method": {
+            "type": "integer"
+          }
+        }
+      },
+      "FlowTags": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "campaign": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "content": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "term": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "medium": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "subid": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "data1": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "data2": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "data3": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "data4": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "data5": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide1": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide2": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide3": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide4": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide5": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hide6": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "cpc": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "cur": {
+            "type": "string",
+            "default": "usd"
+          }
+        }
+      },
+      "FlowStats": {
+        "type": "object",
+        "properties": {
+          "cr": {
+            "type": "number"
+          },
+          "epc": {
+            "type": "number"
+          },
+          "appr": {
+            "type": "number"
+          },
+          "money": {
+            "type": "number"
+          }
+        }
+      },
+      "FlowPostback": {
+        "type": "object",
+        "properties": {
+          "global": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "new": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "hold": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "approve": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "cancel": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "trash": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          }
+        }
+      },
+      "Flow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer"
+          },
+          "gang": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "integer",
+            "description": "Parked domain ID (0 = none)"
+          },
+          "code": {
+            "type": "string",
+            "description": "Symbolic flow code (e.g. ef1c)"
+          },
+          "url": {
+            "type": "string",
+            "description": "Click URL"
+          },
+          "gif": {
+            "type": "string",
+            "description": "Pixel img tag HTML"
+          },
+          "algo": {
+            "type": "integer",
+            "description": "0=Round-robin, 1=Random, 2=CR, 3=EPC, 4=Best-CR, 5=Best-EPC, 6=Weighted, 7=Manual, 8=Smart"
+          },
+          "direct": {
+            "type": "integer",
+            "description": "% traffic to best way (0-100)"
+          },
+          "rotor": {
+            "type": "integer"
+          },
+          "template": {
+            "type": "integer"
+          },
+          "nostore": {
+            "type": "integer"
+          },
+          "simple": {
+            "type": "boolean"
+          },
+          "autourl": {
+            "type": "boolean"
+          },
+          "nocookie": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2
+            ]
+          },
+          "pixel": {
+            "type": "boolean"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FlowFilter"
+          },
+          "tags": {
+            "$ref": "#/components/schemas/FlowTags"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/FlowStats"
+          },
+          "postback": {
+            "$ref": "#/components/schemas/FlowPostback"
+          }
+        }
+      },
+      "FlowShort": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer"
+          },
+          "gang": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "Way": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "flow": {
+            "type": "integer",
+            "description": "Parent flow ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "nostore": {
+            "type": "integer"
+          },
+          "prio": {
+            "type": "integer",
+            "minimum": -9,
+            "maximum": 9
+          },
+          "site": {
+            "type": "integer",
+            "description": "Site ID from storage"
+          },
+          "spath": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "Destination URL (macros supported)"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "http302",
+              "http301",
+              "redirect",
+              "jsgo",
+              "iframe",
+              "proxy",
+              "curl",
+              "local",
+              "site",
+              "error",
+              "blank",
+              "raw"
+            ]
+          },
+          "nxsite": {
+            "type": "integer"
+          },
+          "nxpath": {
+            "type": [
+              "boolean",
+              "string"
+            ]
+          },
+          "nxurl": {
+            "type": "string"
+          },
+          "nxmethod": {
+            "type": "string"
+          },
+          "pos": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Traffic weight"
+          },
+          "w1": {
+            "type": "boolean",
+            "description": "Monday"
+          },
+          "w2": {
+            "type": "boolean",
+            "description": "Tuesday"
+          },
+          "w3": {
+            "type": "boolean",
+            "description": "Wednesday"
+          },
+          "w4": {
+            "type": "boolean",
+            "description": "Thursday"
+          },
+          "w5": {
+            "type": "boolean",
+            "description": "Friday"
+          },
+          "w6": {
+            "type": "boolean",
+            "description": "Saturday"
+          },
+          "w7": {
+            "type": "boolean",
+            "description": "Sunday"
+          },
+          "from": {
+            "type": "string",
+            "description": "Schedule start time HH:MM"
+          },
+          "to": {
+            "type": "string",
+            "description": "Schedule end time HH:MM"
+          },
+          "tz": {
+            "type": "string",
+            "description": "Timezone identifier"
+          },
+          "shift": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Cap period: 0=no, 1=day, 2=week, 3=month, 4=total, 5=hour, 6=15min, 7=30min"
+          },
+          "cap": {
+            "type": "integer",
+            "description": "Lead limit per period (0=unlimited)"
+          },
+          "goal": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cap goal encoding: 0 = any lead (no goal condition), 1 = leads with no goal, n+1 = leads tagged with goal slot n. The cap counts the leads whose own goal equals max(0, goal - 1)."
+          },
+          "status": {
+            "type": "integer"
+          },
+          "geo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "nogeo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mobile": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "bots": {
+            "type": "boolean"
+          },
+          "adid": {
+            "type": "boolean"
+          },
+          "filter": {
+            "type": "integer"
+          },
+          "filters": {
+            "type": "boolean"
+          },
+          "lang": {
+            "type": "boolean"
+          },
+          "uwl": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ubl": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cr": {
+            "type": "number"
+          },
+          "epc": {
+            "type": "number"
+          },
+          "appr": {
+            "type": "number"
+          },
+          "money": {
+            "type": "number"
+          },
+          "crg": {
+            "type": "object",
+            "description": "CR by geo (JSON map)"
+          },
+          "epcg": {
+            "type": "object",
+            "description": "EPC by geo"
+          },
+          "hide1": {
+            "type": "string"
+          },
+          "hide2": {
+            "type": "string"
+          },
+          "hide3": {
+            "type": "string"
+          },
+          "hide4": {
+            "type": "string"
+          },
+          "hide5": {
+            "type": "string"
+          },
+          "hide6": {
+            "type": "string"
+          }
+        }
+      },
+      "FlowWithWays": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Flow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ways": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/Way"
+                },
+                "description": "Ways keyed by way ID"
+              }
+            }
+          }
+        ]
+      },
+      "FlowListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "page",
+          "show",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Flow"
+                },
+                {
+                  "$ref": "#/components/schemas/FlowShort"
+                }
+              ]
+            },
+            "description": "Flows keyed by flow ID"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/flows/list.json": {
+      "get": {
+        "operationId": "flowsList",
+        "summary": "Paginated flow list",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Error codes by HTTP status: 400 scope; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic flow code filter"
+          },
+          {
+            "name": "fid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric flow ID filter"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Alias for fid"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by parked domain ID"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 100
+            },
+            "description": "0 is replaced with 100"
+          },
+          {
+            "name": "short",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Short format: only id, user, gang, name, code, url"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/get.json": {
+      "get": {
+        "operationId": "flowsGet",
+        "summary": "Get single flow with ways",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Error codes by HTTP status: 400 scope, access-denied, wrong-user; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/FlowCode"
+          },
+          {
+            "$ref": "#/components/parameters/FlowId"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flow with ways.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FlowWithWays"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/file.json": {
+      "get": {
+        "operationId": "flowsFile",
+        "summary": "Get TDS client PHP file",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Use .raw extension for file download. Other formats return file content as string in data field. Error codes by HTTP status: 400 scope, access-denied, wrong-user; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/FlowCode"
+          },
+          {
+            "$ref": "#/components/parameters/FlowId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content as string, or file download (raw format).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "PHP file content"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/caps.json": {
+      "get": {
+        "operationId": "flowsCaps",
+        "summary": "Current lead caps per way",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Error codes by HTTP status: 400 scope, access-denied, wrong-user; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/FlowCode"
+          },
+          {
+            "$ref": "#/components/parameters/FlowId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cap status by way ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "available": {
+                            "type": "boolean",
+                            "description": "false when cap > 0 and leads >= cap"
+                          },
+                          "cap": {
+                            "type": "integer",
+                            "description": "Configured limit (0=unlimited)"
+                          },
+                          "leads": {
+                            "type": "integer",
+                            "description": "Current leads in period (0 if cap not set)"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/create.json": {
+      "post": {
+        "operationId": "flowsCreate",
+        "summary": "Create new flow",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Error codes by HTTP status: 400 scope, user-required, limit-reached, no-name, no-way, create; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Initial way URL (required if site not provided)"
+                  },
+                  "site": {
+                    "type": "integer",
+                    "description": "Initial way site ID from storage (required if url not provided)"
+                  },
+                  "method": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2,
+                      3,
+                      4,
+                      5,
+                      6,
+                      7,
+                      8,
+                      9
+                    ],
+                    "description": "0=http302, 1=http301, 2=redirect, 3=iframe, 4=proxy, 5=curl, 6=local, 7=error, 8=blank, 9=jsgo",
+                    "default": 0
+                  },
+                  "simple": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ],
+                    "description": "Simplified mode — single way named Default"
+                  },
+                  "user": {
+                    "type": "integer",
+                    "description": "Owner user ID (required for admin/gang scope)"
+                  },
+                  "gang": {
+                    "type": "integer",
+                    "description": "For admin scope"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created flow with ways.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FlowWithWays"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/clone.json": {
+      "post": {
+        "operationId": "flowsClone",
+        "summary": "Clone existing flow",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Error codes by HTTP status: 400 scope, access-denied, wrong-user, limit-reached, no-name, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "flow": {
+                    "type": "string",
+                    "description": "Source flow symbolic code"
+                  },
+                  "fid": {
+                    "type": "integer",
+                    "description": "Source flow numeric ID"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "New flow name"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cloned flow with ways.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FlowWithWays"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/change.json": {
+      "post": {
+        "operationId": "flowsChange",
+        "summary": "Edit flow settings",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Partial update — only provided fields are changed. POST wins over GET on collision. Error codes by HTTP status: 400 scope, access-denied, wrong-user, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/FlowCode"
+          },
+          {
+            "$ref": "#/components/parameters/FlowId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "integer"
+                  },
+                  "algo": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8
+                  },
+                  "direct": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "rotor": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "template": {
+                    "type": "integer"
+                  },
+                  "nostore": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ]
+                  },
+                  "simple": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "autourl": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "pixel": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "nocookie": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ]
+                  },
+                  "filter": {
+                    "type": "integer",
+                    "description": "Cloaking filter ID (must be owned by same user)"
+                  },
+                  "bots": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "filters": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "geo": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "lang": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "adid": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "geos": {
+                    "description": "ISO country codes. ww/zz = reset.",
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "back": {
+                    "type": "string",
+                    "description": "Traffic-back URL"
+                  },
+                  "site": {
+                    "type": "integer"
+                  },
+                  "method": {
+                    "type": "integer"
+                  },
+                  "utms": {
+                    "type": "string"
+                  },
+                  "utmc": {
+                    "type": "string"
+                  },
+                  "utmn": {
+                    "type": "string"
+                  },
+                  "utmt": {
+                    "type": "string"
+                  },
+                  "utmm": {
+                    "type": "string"
+                  },
+                  "subid": {
+                    "type": "string"
+                  },
+                  "data1": {
+                    "type": "string"
+                  },
+                  "data2": {
+                    "type": "string"
+                  },
+                  "data3": {
+                    "type": "string"
+                  },
+                  "data4": {
+                    "type": "string"
+                  },
+                  "data5": {
+                    "type": "string"
+                  },
+                  "hide1": {
+                    "type": "string"
+                  },
+                  "hide2": {
+                    "type": "string"
+                  },
+                  "hide3": {
+                    "type": "string"
+                  },
+                  "hide4": {
+                    "type": "string"
+                  },
+                  "hide5": {
+                    "type": "string"
+                  },
+                  "hide6": {
+                    "type": "string"
+                  },
+                  "cpc": {
+                    "type": "string"
+                  },
+                  "cur": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "pbglobal": {
+                    "type": "string"
+                  },
+                  "pbnew": {
+                    "type": "string"
+                  },
+                  "pbhold": {
+                    "type": "string"
+                  },
+                  "pbapprove": {
+                    "type": "string"
+                  },
+                  "pbcancel": {
+                    "type": "string"
+                  },
+                  "pbtrash": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated flow with ways.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FlowWithWays"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/remove.json": {
+      "post": {
+        "operationId": "flowsRemove",
+        "summary": "Delete flow",
+        "tags": [
+          "Flows"
+        ],
+        "description": "Deletes flow and all its ways. The click and lead statistics of the flow are NOT deleted. Error codes by HTTP status: 400 scope, access-denied, wrong-user, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/FlowCode"
+          },
+          {
+            "$ref": "#/components/parameters/FlowId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted flow data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Flow"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/add.json": {
+      "post": {
+        "operationId": "flowsAdd",
+        "summary": "Add way to flow",
+        "tags": [
+          "Ways"
+        ],
+        "description": "Error codes by HTTP status: 400 scope, access-denied, wrong-user, no-name, no-way, add; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "flow": {
+                    "type": "string"
+                  },
+                  "fid": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Destination URL (required if site not provided)"
+                  },
+                  "site": {
+                    "type": "integer",
+                    "description": "Site ID from storage (required if url not provided)"
+                  },
+                  "method": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created way with flow field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Way"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/copy.json": {
+      "post": {
+        "operationId": "flowsCopy",
+        "summary": "Copy a way",
+        "tags": [
+          "Ways"
+        ],
+        "description": "Copies a way to the same flow or to another flow. Cross-flow copy is allowed only within the same user. Error codes by HTTP status: 400 scope, access-denied, wrong-user, wrong-way, no-name, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "way",
+                  "name"
+                ],
+                "properties": {
+                  "way": {
+                    "type": "integer",
+                    "description": "Source way ID"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "New way name"
+                  },
+                  "flow": {
+                    "type": "string",
+                    "description": "Target flow symbolic code (default: same flow)"
+                  },
+                  "fid": {
+                    "type": "integer",
+                    "description": "Target flow numeric ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New way with flow.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Way"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/edit.json": {
+      "post": {
+        "operationId": "flowsEdit",
+        "summary": "Edit way settings",
+        "tags": [
+          "Ways"
+        ],
+        "description": "Partial update of way fields. POST wins over GET. Error codes by HTTP status: 400 scope, access-denied, wrong-user, wrong-way, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "way"
+                ],
+                "properties": {
+                  "way": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "site": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "active": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "method": {
+                    "type": "integer"
+                  },
+                  "nostore": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "pos": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "prio": {
+                    "type": "integer",
+                    "minimum": -9,
+                    "maximum": 9
+                  },
+                  "wd1": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd2": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd3": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd4": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd5": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd6": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "wd7": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "fh": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "fm": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  },
+                  "th": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "tm": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 7,
+                    "description": "0=no, 1=day, 2=week, 3=month, 4=total, 5=hour, 6=15min, 7=30min"
+                  },
+                  "cap": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "goal": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Cap goal encoding: 0 = any lead (no goal condition), 1 = leads with no goal, n+1 = leads tagged with goal slot n; a negative value is stored as 0. The cap counts the leads whose own goal equals max(0, goal - 1)."
+                  },
+                  "status": {
+                    "type": "integer"
+                  },
+                  "tz": {
+                    "type": "string"
+                  },
+                  "nxsite": {
+                    "type": "integer"
+                  },
+                  "nxurl": {
+                    "type": "string"
+                  },
+                  "nxmethod": {
+                    "type": "integer"
+                  },
+                  "geo": {
+                    "description": "ww/zz = reset",
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "nogeo": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "mobile": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2,
+                      3,
+                      4
+                    ]
+                  },
+                  "bots": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "adid": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "filters": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "lang": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "uwl": {
+                    "type": "string",
+                    "description": "URL whitelist (newline-separated)"
+                  },
+                  "ubl": {
+                    "type": "string"
+                  },
+                  "hide1": {
+                    "type": "string"
+                  },
+                  "hide2": {
+                    "type": "string"
+                  },
+                  "hide3": {
+                    "type": "string"
+                  },
+                  "hide4": {
+                    "type": "string"
+                  },
+                  "hide5": {
+                    "type": "string"
+                  },
+                  "hide6": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated way with flow field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Way"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/flows/del.json": {
+      "post": {
+        "operationId": "flowsDel",
+        "summary": "Delete a way",
+        "tags": [
+          "Ways"
+        ],
+        "description": "Statistics are not deleted. Deleting the last way leaves flow without destinations. Error codes by HTTP status: 400 scope, access-denied, wrong-user, wrong-way, create; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "way"
+                ],
+                "properties": {
+                  "way": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted way data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Way"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Flows",
+      "description": "Flow CRUD and configuration"
+    },
+    {
+      "name": "Ways",
+      "description": "Way (destination path) management within flows"
+    }
+  ]
+}

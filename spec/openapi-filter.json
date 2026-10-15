@@ -1,0 +1,1044 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Filter & Cloaking API",
+    "version": "1.0.0",
+    "description": "Two subsystems: /api/filter/* manages and copies campaigns, reads the visit journal and statistics and clears the journal via standard API auth with the scope parameter (GET query string only); errors use the {status:\"error\", error} envelope with HTTP statuses (400 generic and scope, 401 key, 402 unpaid, 403 access/ban, 404 no-id/bad-id/bad-status of postback, 500 db) and the headers X-API-Status / X-API-Error; /fltr/ is the runtime cloaking endpoint with its own URL-embedded auth and x-www-form-urlencoded-only POST, and always answers HTTP 200. Blacklists themselves are managed by the separate blacklist API."
+  },
+  "servers": [
+    { "url": "https://{tracker}", "variables": { "tracker": { "default": "example.com", "description": "Tracker domain" } } }
+  ],
+  "security": [{ "ApiToken": [] }],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}. Example: 13-4a3bc9d..."
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": { "type": "string", "enum": ["user", "gang", "team", "admin", "sys", "system", "all"], "default": "user" },
+        "description": "Access scope. Must be in GET query string even when body is JSON. user (default; any unknown value): own campaigns. gang/team: campaigns of the gang members, key owner must be a gang admin. admin/sys/system/all: all campaigns, requires an admin account. An unusable scope gives error scope."
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "POST first, then GET. Gang scope: one member of the own gang (a non-member gives scope). Admin scope: owner filter. set: owner of a newly created campaign (required in gang/admin scope, else user-required)."
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "Admin scope only: gang filter (campaigns of its members). POST first, then GET."
+      },
+      "ActingUser": {
+        "name": "uu",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "Act as this user (GET or POST). Requires the key owner to be an admin account."
+      }
+    },
+    "headers": {
+      "XApiStatus": { "schema": { "type": "string", "enum": ["ok", "error"] }, "description": "Result status repeated from the body" },
+      "XApiError": { "schema": { "type": "string" }, "description": "Error code repeated from the body" }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, no-site, no-domain, user-required, limit, no-list, bad-list, bad-ip, bad-size, bad-type, bad-value, failed, no-item, bad-item, bad-from, bad-to, bad-user, bad-gang, bad-site, bad-result, bad-ua32, bad-geo; framework error request.",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "no-site" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "key" }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required when paid subscriptions are enabled).",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "unpaid" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (filter/clear under scope=gang).",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "ban" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "postback only: no-id (uid missing), bad-id (campaign not found or not owned), bad-status (status not in any group).",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "bad-id" }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database write failed); framework errors func/app.",
+        "headers": { "X-API-Status": { "$ref": "#/components/headers/XApiStatus" }, "X-API-Error": { "$ref": "#/components/headers/XApiError" } },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "db" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["status", "error"],
+        "properties": {
+          "status": { "type": "string", "enum": ["error"] },
+          "error": {
+            "type": "string",
+            "description": "Error code. Framework: request, key, auth, unpaid, access, ban, bot, func, app, db. Functions: scope, no-site, no-domain, user-required, limit, no-list, bad-list, bad-ip, bad-size, bad-type, bad-value, failed, no-item, bad-item, bad-from, bad-to, bad-user, bad-gang, bad-site, bad-result, bad-ua32, bad-geo, no-id, bad-id, bad-status"
+          }
+        }
+      },
+      "Nav": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "description": "Rows matching the filters" },
+          "page": { "type": "integer", "description": "Requested page" },
+          "pages": { "type": "integer", "description": "ceil(total / show)" },
+          "show": { "type": "integer", "description": "Effective page size" }
+        }
+      },
+      "JournalRow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "Journal row ID" },
+          "user": { "type": "integer", "description": "Campaign owner" },
+          "site": { "type": "integer", "description": "Campaign ID" },
+          "time": { "type": "integer", "description": "Unix timestamp of the visit" },
+          "result": { "type": "integer", "minimum": 0, "maximum": 14, "description": "Reason code: 0=target shown, 1=junk path, 2=wrong device/OS/browser, 3=geo, 4=IPv4 blacklisted, 5=IPv4 net, 6=IPv6, 7=header rule/no UA, 8=bot/preview, 9=protocol, 10=language, 11=trash, 12=URL, 13=no ad click-id, 14=outside schedule" },
+          "list": { "type": "integer", "description": "Blacklist that caused the block; 0 when none" },
+          "geo": { "type": "string", "description": "Country code, lower case; zz when unknown" },
+          "ip": { "type": "string", "description": "Visitor IP (IPv4 or IPv6)" },
+          "mobile": { "type": "boolean", "description": "Mobile User-Agent" },
+          "os": { "type": "integer", "description": "0=unknown, 1=Windows, 2=macOS, 3=Linux, 4=iOS, 5=Android, 6=Windows Mobile, 7=Symbian, 8=BlackBerry" },
+          "browser": { "type": "integer", "description": "0=unknown, 1=Chrome, 2=Firefox, 3=MSIE, 4=Safari, 5=Opera, 6=Edge, 7=Facebook, 8=Instagram, 9=TikTok, 10=WebView, 11=bot" },
+          "ua": { "type": "string", "description": "Raw User-Agent; empty once the raw row is purged" },
+          "ua32": { "type": "integer", "description": "crc32 of the User-Agent" },
+          "ips": { "type": "array", "items": { "type": "string" }, "description": "IP addresses found in the request headers; [] when none or purged" },
+          "headers": {
+            "description": "Captured request headers {header name: value}; names as in the blacklist API header IDs, numeric key when unnamed; User-Agent not included. Empty value is the JSON array [].",
+            "oneOf": [
+              { "type": "object", "additionalProperties": { "type": "string" } },
+              { "type": "array", "maxItems": 0 }
+            ]
+          }
+        }
+      },
+      "StatsRow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "item=date: day as YYYYMMDD; item=site: campaign ID" },
+          "name": { "type": "string", "description": "item=date: YYYY-MM-DD; item=site: campaign domain, or \"ID <id>\" when the campaign is gone or outside the scope" },
+          "user": { "type": "integer", "description": "item=site only: campaign owner (0 when the campaign was not found)" },
+          "click": { "type": "integer", "description": "All logged visits of the item in the range" },
+          "black": { "type": "integer", "description": "Visits with reason 0 (target shown)" },
+          "black_pct": { "type": "number", "description": "black / click * 100, one decimal" },
+          "white": { "type": "integer", "description": "Visits with a non-zero reason (click - black)" },
+          "white_pct": { "type": "number", "description": "white / click * 100, one decimal" },
+          "reason": { "type": "object", "additionalProperties": { "type": "integer" }, "description": "Visit count per reason code; keys 1..14 always present, zero-filled" },
+          "reason_pct": { "type": "object", "additionalProperties": { "type": "number" }, "description": "Same keys: count / click * 100, one decimal" }
+        }
+      },
+      "CampaignStats": {
+        "type": "object",
+        "properties": {
+          "click": { "type": "integer", "description": "Total visits (white + black)" },
+          "black": { "type": "integer", "description": "Allowed visits (target shown)" },
+          "white": { "type": "integer", "description": "Blocked visits (dummy shown)" },
+          "leads": { "type": "integer" },
+          "approve": { "type": "integer" },
+          "cancel": { "type": "integer" },
+          "cash": { "type": "number", "format": "float", "description": "Earnings" },
+          "cr": { "type": "number", "format": "float", "description": "Conversion rate %" },
+          "epc": { "type": "number", "format": "float", "description": "Earnings per click" },
+          "appr": { "type": "number", "format": "float", "description": "Approval rate %" }
+        }
+      },
+      "Campaign": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "Campaign ID" },
+          "user": { "type": "integer", "description": "Campaign owner user ID" },
+          "api": { "type": "string", "description": "Cloaking URL: https://{host}/fltr/{owner}-{owner key}-{id}. Contains the campaign owner's API key." },
+          "domain": { "type": "string", "description": "Campaign domain" },
+          "mode": {
+            "type": "integer",
+            "enum": [0, 1, 2, 3, 4],
+            "description": "0=Auto, 1=Paused, 2=Disabled, 3=Train-white, 4=Train-black"
+          },
+          "stats": { "$ref": "#/components/schemas/CampaignStats" }
+        }
+      },
+      "CampaignDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Campaign" },
+          {
+            "type": "object",
+            "properties": {
+              "geo": { "type": "array", "items": { "type": "string" }, "description": "Allowed country codes (ISO 3166-1 alpha-2)" },
+              "nogeo": { "type": "array", "items": { "type": "string" }, "description": "Blocked country codes" },
+              "langs": { "type": "array", "items": { "type": "string" }, "description": "Allowed Accept-Language codes" },
+              "nolangs": { "type": "array", "items": { "type": "string" } },
+              "os": { "type": "array", "items": { "type": "integer" }, "description": "OS IDs: 1=Win, 2=macOS, 3=Linux, 4=iOS, 5=Android, 6=WinMobile, 7=Symbian, 8=BlackBerry" },
+              "browser": { "type": "array", "items": { "type": "integer" }, "description": "Browser IDs: 1=Chrome, 2=Firefox, 3=IE, 4=Safari, 5=Opera, 6=Edge, 7=FB, 8=Instagram, 9=TikTok, 10=WebView, 11=bot" },
+              "mobile": { "type": "integer", "enum": [0, 1, 2, 3, 4], "description": "0=Any, 1=Mobile, 2=Desktop, 3=iOS, 4=Mobile non-iOS" },
+              "proto": { "type": "integer", "enum": [0, 1, 2], "description": "0=Any, 1=IPv4 only, 2=IPv6 only" },
+              "ipmain": { "type": "boolean", "description": "Check only primary IP" },
+              "lang": { "type": "boolean", "description": "Enable language vs country check" },
+              "adid": { "type": "boolean", "description": "Require ad click-id parameter" },
+              "trash": { "type": "integer", "description": "First N visits forced to white" },
+              "list": { "type": "array", "items": { "type": "integer" }, "description": "Attached blacklist IDs" },
+              "wl": { "type": "array", "items": { "type": "string" }, "description": "IP whitelist, one entry (address or a.b.c.d/N network) per line" },
+              "uwl": { "type": "array", "items": { "type": "string" }, "description": "URL whitelist substrings" },
+              "ubl": { "type": "array", "items": { "type": "string" }, "description": "URL blacklist substrings" },
+              "log": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Visit-journal mode: 0=log all visits, 1=only target visits, 2=only dummy visits, 3=do not log" },
+              "wd1": { "type": "boolean", "description": "Schedule: Monday enabled" },
+              "wd2": { "type": "boolean", "description": "Schedule: Tuesday enabled" },
+              "wd3": { "type": "boolean", "description": "Schedule: Wednesday enabled" },
+              "wd4": { "type": "boolean", "description": "Schedule: Thursday enabled" },
+              "wd5": { "type": "boolean", "description": "Schedule: Friday enabled" },
+              "wd6": { "type": "boolean", "description": "Schedule: Saturday enabled" },
+              "wd7": { "type": "boolean", "description": "Schedule: Sunday enabled" },
+              "fh": { "type": "integer", "minimum": 0, "maximum": 23, "description": "Schedule window start hour" },
+              "fm": { "type": "integer", "minimum": 0, "maximum": 59, "description": "Schedule window start minute" },
+              "th": { "type": "integer", "minimum": 0, "maximum": 23, "description": "Schedule window end hour" },
+              "tm": { "type": "integer", "minimum": 0, "maximum": 59, "description": "Schedule window end minute" },
+              "tz": { "type": "string", "description": "Schedule time zone (IANA name); empty = server time" },
+              "white": { "type": "string", "description": "Dummy URL or filename" },
+              "black": { "type": "string", "description": "Target URL or filename" },
+              "mwhite": { "type": "integer", "minimum": 0, "maximum": 9, "description": "Dummy display mode: 0=302, 1=include, 2=iframe, 3=curl, 4=WordPress, 5=301, 6=meta-refresh, 7=curl+base, 8=blank, 9=JS" },
+              "mblack": { "type": "integer", "minimum": 0, "maximum": 9, "description": "Target display mode (same values)" },
+              "postback": {
+                "type": "object",
+                "properties": {
+                  "new": { "type": "string", "description": "Postback URL for new lead" },
+                  "approve": { "type": "string", "description": "Postback URL for approve" },
+                  "paid": { "type": "string", "description": "Postback URL for paid (includes {payout})" },
+                  "cancel": { "type": "string", "description": "Postback URL for cancel" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/api/filter/list.json": {
+      "get": {
+        "operationId": "filterList",
+        "summary": "List filter campaigns",
+        "tags": ["Filter Campaigns"],
+        "description": "Returns the filter campaigns of the scope: own in user scope, gang members' in gang scope, all (optionally narrowed by user/gang) in admin scope. No pagination, no ordering guarantee. The success body is a bare array (no status envelope).",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of campaigns (no envelope); [] when none. Errors are {status,error} objects with HTTP 4xx/5xx (list: scope).",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Campaign" } },
+                "examples": {
+                  "success": {
+                    "value": [
+                      {
+                        "id": 1,
+                        "user": 13,
+                        "api": "https://example.com/fltr/13-4a3bc9d-1",
+                        "domain": "landing.example.com",
+                        "mode": 0,
+                        "stats": { "click": 1000, "black": 700, "white": 300, "leads": 50, "approve": 40, "cancel": 5, "cash": 200.0, "cr": 7.14, "epc": 0.29, "appr": 80.0 }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/get.json": {
+      "get": {
+        "operationId": "filterGet",
+        "summary": "Get filter campaign details",
+        "tags": ["Filter Campaigns"],
+        "description": "Returns one campaign of the scope with all editable fields, statistics and postback URL templates. The body is a bare object (no status envelope). Also accepts POST with the same fields. api and postback.* contain the campaign owner's API key. Errors: scope, no-site, no-domain.",
+        "parameters": [
+          { "name": "uid", "in": "query", "schema": { "type": "integer" }, "description": "Campaign ID. Required if domain not provided. When non-zero the lookup is by ID only and domain is ignored." },
+          { "name": "domain", "in": "query", "schema": { "type": "string" }, "description": "Campaign name, compared for exact equality with the stored domain (not parsed as a URL); the highest campaign ID wins on duplicates. POST takes priority over GET. Required if uid not provided." },
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign detail object (no envelope).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CampaignDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/set.json": {
+      "post": {
+        "operationId": "filterSet",
+        "summary": "Create or update filter campaign",
+        "tags": ["Filter Campaigns"],
+        "description": "Creates a new campaign if uid is absent and domain doesn't match an existing one in the scope; the other supplied fields are applied to it in the same call. A new campaign is owned by the scope's user: in gang/admin scope pass user, else user-required; a create is also refused with limit when the owner's plan allows no more campaigns (checked after user-required). Parameters merged from GET+POST (POST wins on collision); only the fields present change. An unknown uid gives no-site.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "integer", "description": "Existing campaign ID. Required for update when not using domain." },
+                  "domain": { "type": "string", "description": "Campaign name (not parsed as a URL). Required when uid absent. A value different from the stored one renames the campaign." },
+                  "mode": { "type": "integer", "enum": [0, 1, 2, 3, 4] },
+                  "ipmain": { "type": ["integer", "boolean"] },
+                  "lang": { "type": ["integer", "boolean"] },
+                  "adid": { "type": ["integer", "boolean"] },
+                  "trash": { "type": "integer" },
+                  "log": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Visit-journal mode: 0=log all visits, 1=only target visits, 2=only dummy visits, 3=do not log" },
+                  "mobile": { "type": "integer", "enum": [0, 1, 2, 3, 4] },
+                  "proto": { "type": "integer", "enum": [0, 1, 2] },
+                  "geo": { "description": "ISO country codes. ww/zz = reset.", "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                  "nogeo": { "description": "Blocked countries.", "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                  "langs": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                  "nolangs": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                  "os": { "description": "OS IDs.", "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "integer" } }] },
+                  "browser": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "integer" } }] },
+                  "wl": { "type": "string", "description": "IP whitelist (multiline: one address or a.b.c.d/N network per line)" },
+                  "uwl": { "type": "string", "description": "URL whitelist (one substring per line; comma = AND)" },
+                  "ubl": { "type": "string", "description": "URL blacklist (same format as uwl)" },
+                  "white": { "type": "string", "description": "Dummy URL or filename" },
+                  "black": { "type": "string", "description": "Target URL or filename" },
+                  "mwhite": { "type": "integer", "minimum": 0, "maximum": 9 },
+                  "mblack": { "type": "integer", "minimum": 0, "maximum": 9 },
+                  "list": { "description": "Blacklist IDs. IDs outside the campaign owner's global, personal and gang lists are dropped silently; empty clears the selection.", "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "integer" } }] },
+                  "wd1": { "type": ["integer", "boolean"], "description": "Schedule: Monday enabled" },
+                  "wd2": { "type": ["integer", "boolean"], "description": "Schedule: Tuesday enabled" },
+                  "wd3": { "type": ["integer", "boolean"], "description": "Schedule: Wednesday enabled" },
+                  "wd4": { "type": ["integer", "boolean"], "description": "Schedule: Thursday enabled" },
+                  "wd5": { "type": ["integer", "boolean"], "description": "Schedule: Friday enabled" },
+                  "wd6": { "type": ["integer", "boolean"], "description": "Schedule: Saturday enabled" },
+                  "wd7": { "type": ["integer", "boolean"], "description": "Schedule: Sunday enabled" },
+                  "fh": { "type": "integer", "minimum": 0, "maximum": 23, "description": "Schedule window start hour" },
+                  "fm": { "type": "integer", "minimum": 0, "maximum": 59, "description": "Schedule window start minute" },
+                  "th": { "type": "integer", "minimum": 0, "maximum": 23, "description": "Schedule window end hour (window active only when an hour or minute is non-zero)" },
+                  "tm": { "type": "integer", "minimum": 0, "maximum": 59, "description": "Schedule window end minute" },
+                  "tz": { "type": "string", "description": "Schedule time zone (IANA name); unknown name resets to empty (server time)" }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "type": "object", "description": "Same fields as form-encoded." }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created or updated campaign reference (also when the call carried no editable fields).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "id", "api"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "id": { "type": "integer" },
+                    "api": { "type": "string", "description": "Cloaking URL for this campaign (owner's key)" }
+                  }
+                },
+                "example": { "status": "ok", "id": 1, "api": "https://example.com/fltr/13-4a3bc9d-1" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/del.json": {
+      "post": {
+        "operationId": "filterDel",
+        "summary": "Delete filter campaign",
+        "tags": ["Filter Campaigns"],
+        "description": "Deletes the campaign (only inside the scope) and purges its visit-journal records.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "integer", "description": "Campaign ID" },
+                  "domain": { "type": "string", "description": "Campaign name (alternative to uid; highest ID wins on duplicates)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "id"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "id": { "type": "integer" }
+                  }
+                }
+              }
+            },
+            "description": "Deleted campaign ID. Errors: scope, no-site, no-domain (HTTP 400), db (HTTP 500)."
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/make.json": {
+      "get": {
+        "operationId": "filterMake",
+        "summary": "Download integration index.php",
+        "tags": ["Filter Campaigns"],
+        "description": "Streams a PHP file that POSTs $_SERVER to /fltr/ and dispatches visitors. The campaign owner's API key is embedded in plaintext in the downloaded file, also when a gang admin or an admin downloads it. The body is the file whatever format suffix was requested.",
+        "parameters": [
+          { "name": "uid", "in": "query", "schema": { "type": "integer" } },
+          { "name": "domain", "in": "query", "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "responses": {
+          "200": {
+            "description": "PHP file download.",
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            },
+            "headers": {
+              "Content-Disposition": { "schema": { "type": "string" }, "example": "attachment;filename=index.php" }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/block.json": {
+      "post": {
+        "operationId": "filterBlock",
+        "summary": "Add item to blacklist",
+        "tags": ["Filter Blacklists"],
+        "description": "Adds an IPv4 address, IPv4 network, IPv6 network, or header rule to an existing blacklist the caller may modify. The list kind is determined by the list itself (its type), not by a parameter. Allowed lists: user scope - the key owner's personal lists (system and gang lists refused); gang scope - the gang's lists and the personal lists of the member given in user; admin scope - any list (with user and/or gang the list owner must match). List status and locked (feed/mirror) lists are not checked. Create and manage lists with the blacklist API.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["list"],
+                "properties": {
+                  "list": { "type": "integer", "description": "Target blacklist ID (must be permitted in the scope, else bad-list)" },
+                  "ip": { "type": "string", "description": "IPv4 or IPv6 address (for list types 1/2/3). Must be public." },
+                  "size": { "type": "integer", "description": "Network mask. IPv4: 8–31. IPv6: 32–128. Required for types 2/3." },
+                  "value": { "type": "string", "description": "Header value or regular expression (list type 4): non-empty, valid UTF-8, at most 250 characters" },
+                  "regexp": { "type": ["integer", "boolean"], "description": "Treat value as regular expression (type 4 only)" },
+                  "white": { "type": ["integer", "boolean"], "description": "Type 4 only: header white-list rule - the visit is blocked when the header does not match or is not sent" },
+                  "type": { "type": "integer", "minimum": 1, "maximum": 255, "description": "Header ID (type 4 only); unknown IDs are accepted but never match" },
+                  "comment": { "type": "integer", "description": "Tag ID (1-9; not range-checked)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added item details. Errors (HTTP 400): scope, no-list, bad-list, bad-ip, bad-size, bad-type, bad-value, failed (the item could not be stored, e.g. duplicate item).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "id"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "id": { "type": "integer" },
+                    "ip": { "description": "Added IP (string for type 1/3, integer network start for type 2)" },
+                    "size": { "type": "integer" },
+                    "value": { "type": "string" },
+                    "type": { "type": "integer" },
+                    "regexp": { "type": "boolean" },
+                    "white": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/postback.json": {
+      "get": {
+        "operationId": "filterPostback",
+        "summary": "Record postback to mini-tracker",
+        "tags": ["Filter Campaigns"],
+        "description": "Increments campaign counters. Use the URL templates from filter/get response. No lead row is created and there is no deduplication. Works on the authenticated user's own campaigns only (or the uu user's); scope has no effect. Errors are HTTP 404: no-id, bad-id, bad-status.",
+        "parameters": [
+          { "name": "uid", "in": "query", "required": true, "schema": { "type": "integer" }, "description": "Campaign ID" },
+          {
+            "name": "status",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["lead", "wait", "process", "hold", "new", "approve", "sale", "approved", "confirm", "confirmed", "cancel", "trash", "cancelled", "reject", "fake"]
+            }
+          },
+          { "name": "payout", "in": "query", "schema": { "type": "number" }, "description": "Earnings delta for approve group. Positive adds, negative subtracts." },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "filter": { "type": "integer", "description": "Campaign ID" }
+                  }
+                }
+              }
+            },
+            "description": "Counters updated."
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/log.json": {
+      "get": {
+        "operationId": "filterLog",
+        "summary": "Visit journal",
+        "tags": ["Filter Journal"],
+        "description": "One page of the visit journal, newest first: one row per checked visit with reason code, matched blacklist, geo, IP, device data, raw User-Agent, discovered IP list and captured request headers. Read-only. Visits are restricted by the campaign owner according to the scope. A visit appears only after the background job condensed it; visits of paused/disabled campaigns and visits skipped by the campaign log mode are never present. Raw fields (ua, ips, headers) are purged earlier (30 days by default) than the rows (90 days), so old rows can come back with empty ua/ips/headers. Fields may also be sent as form data (POST wins).",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "Page number" },
+          { "name": "show", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 50 }, "description": "Rows per page; below 1 or non-numeric gives 50, above 1000 is cut to 1000" },
+          { "name": "site", "in": "query", "schema": { "type": "integer" }, "description": "Only visits of this campaign (the ownership condition of the scope still applies)" },
+          { "name": "list", "in": "query", "schema": { "type": "integer" }, "description": "Only visits blocked by this blacklist" },
+          { "name": "result", "in": "query", "schema": { "type": "integer" }, "description": "-2 = target shown (reason 0), -1 = any block (reason not 0), any other number = exactly that reason code. Non-numeric is ignored." },
+          { "name": "ip", "in": "query", "schema": { "type": "string" }, "description": "Visitor IP; matched through a 32-bit hash (IPv4 exact, IPv6 hash; different addresses can collide). An invalid IP is ignored." },
+          { "name": "ua32", "in": "query", "schema": { "type": "integer" }, "description": "crc32 of the User-Agent, as returned in ua32; 0 is ignored" },
+          { "name": "geo", "in": "query", "schema": { "type": "string" }, "description": "Country code (lower-cased)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Journal page. data is an object keyed by row ID in descending order; an empty page is the JSON array []. A page beyond the last returns empty data with the same nav.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "nav"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": {
+                      "oneOf": [
+                        { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/JournalRow" } },
+                        { "type": "array", "maxItems": 0 }
+                      ]
+                    },
+                    "nav": { "$ref": "#/components/schemas/Nav" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "15093": {
+                      "id": 15093,
+                      "user": 13,
+                      "site": 7,
+                      "time": 1760000000,
+                      "result": 3,
+                      "list": 0,
+                      "geo": "cn",
+                      "ip": "1.2.3.4",
+                      "mobile": false,
+                      "os": 1,
+                      "browser": 1,
+                      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...",
+                      "ua32": 3141592653,
+                      "ips": ["1.2.3.4"],
+                      "headers": { "Accept-Language": "zh-CN,zh;q=0.9" }
+                    }
+                  },
+                  "nav": { "total": 1, "page": 1, "pages": 1, "show": 50 }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/stats.json": {
+      "get": {
+        "operationId": "filterStats",
+        "summary": "Visit statistics by date or campaign",
+        "tags": ["Filter Journal"],
+        "description": "Aggregates the visit journal by day or by campaign over a date range: total, target (black) and dummy (white) visits and a per-reason breakdown with percentages. Read-only. Counts come from the journal, so they differ from the campaign counters of list/get (the journal honours the campaign log mode, omits visits of paused/disabled campaigns, includes checks made by a flow bound to the campaign, and is cut by retention - 90 days by default). Days, from, to and today are computed in the calling user's own time zone (tz of the profile) when the install's per-user time zones setting is on, the stored zone is a valid IANA name and the database server knows it; otherwise in the install's time zone. dataset.tz names the zone used. Errors (HTTP 400): scope, no-item, bad-item, bad-from, bad-to.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "name": "item", "in": "query", "required": true, "schema": { "type": "string", "enum": ["date", "site"] }, "description": "Grouping: date = one row per calendar day, site = one row per campaign. Empty gives no-item, other values bad-item." },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "First day, YYYY-MM-DD (a real calendar date, else bad-from), in the time zone of dataset.tz. After 'to' it is set to 'to'. Default: 'to' minus 6 days." },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "Last day, inclusive, YYYY-MM-DD (else bad-to), in the time zone of dataset.tz. Empty or in the future gives today." },
+          { "name": "site", "in": "query", "schema": { "type": "integer" }, "description": "Only this campaign" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "Page number over the aggregated rows" },
+          { "name": "show", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 50 }, "description": "Rows per page; below 1 gives 50, above 1000 is cut to 1000" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistics page. data is keyed by id: item=date newest day first, item=site by campaign name ascending; days/campaigns without visits are absent; a page beyond the end gives data = []. dataset.results maps reason codes 0..14 to labels in the authenticated user's language.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "nav", "dataset"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": {
+                      "oneOf": [
+                        { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/StatsRow" } },
+                        { "type": "array", "maxItems": 0 }
+                      ]
+                    },
+                    "nav": { "$ref": "#/components/schemas/Nav" },
+                    "dataset": {
+                      "type": "object",
+                      "properties": {
+                        "results": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Reason code 0..14 -> localized label" },
+                        "tz": { "type": "string", "description": "IANA name of the time zone the days, from, to and today are in: the calling user's zone when per-user zones are on and usable, otherwise the install's zone" }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "20260314": {
+                      "id": 20260314,
+                      "name": "2026-03-14",
+                      "click": 200,
+                      "black": 150,
+                      "black_pct": 75.0,
+                      "white": 50,
+                      "white_pct": 25.0,
+                      "reason": { "1": 0, "2": 10, "3": 30, "4": 5, "5": 0, "6": 0, "7": 0, "8": 5, "9": 0, "10": 0, "11": 0, "12": 0, "13": 0, "14": 0 },
+                      "reason_pct": { "1": 0, "2": 5.0, "3": 15.0, "4": 2.5, "5": 0, "6": 0, "7": 0, "8": 2.5, "9": 0, "10": 0, "11": 0, "12": 0, "13": 0, "14": 0 }
+                    }
+                  },
+                  "nav": { "total": 1, "page": 1, "pages": 1, "show": 50 },
+                  "dataset": { "results": { "0": "Site shown successfully", "1": "Request to invalid path or domain", "2": "Traffic from wrong device", "3": "Request from blocked country" }, "tz": "Europe/Moscow" }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/clear.json": {
+      "post": {
+        "operationId": "filterClear",
+        "summary": "Clear the visit journal",
+        "tags": ["Filter Journal"],
+        "description": "Deletes the visit-journal rows that filter/log lists for the same six filters (site, list, result, ip, ua32, geo), so a client clears exactly what it can read; no filter at all clears the whole scope. Only the journal rows are deleted: campaign counters of list/get are not changed, and a cleared visit does not come back. A filter that is sent must be read exactly as sent, else the call is refused with bad-site, bad-list, bad-result, bad-ip, bad-ua32 or bad-geo and nothing is deleted; an empty value counts as not sent, 0 of site/list/ua32 means no filter, an array value is refused. Scopes: user clears the caller's visits; gang is never clearable (access for a team admin, scope for any other user); admin alone clears every visit of the install, with user and/or gang only that user's / the team members' visits (a non-numeric user or gang gives bad-user / bad-gang). Order of checks: scope, access, bad-user/bad-gang, the filters, then the delete (db).",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "site": { "type": "integer", "description": "Only visits of this campaign (ownership of the scope still applies). Digits only, else bad-site; 0 or empty = no filter." },
+                  "list": { "type": "integer", "description": "Only visits blocked by this blacklist. Digits only, else bad-list; 0 or empty = no filter." },
+                  "result": { "type": "integer", "description": "-2 = target shown (reason 0), -1 = any block (reason not 0), any other integer = exactly that reason code. Not an integer gives bad-result." },
+                  "ip": { "type": "string", "description": "Visitor IP, matched through a 32-bit hash (IPv4 exact, IPv6 hash; a colliding address is deleted too). Not an IP gives bad-ip; empty = no filter." },
+                  "ua32": { "type": "integer", "description": "crc32 of the User-Agent. Digits only, else bad-ua32; 0 or empty = no filter." },
+                  "geo": { "type": "string", "description": "Two-letter country code, case-insensitive. Else bad-geo; empty = no filter." }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "type": "object", "description": "Same fields as form-encoded." }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number of journal rows deleted (0 when nothing matched).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "del": { "type": "integer", "description": "Rows deleted" }
+                      }
+                    }
+                  }
+                },
+                "example": { "status": "ok", "data": { "del": 120 } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/filter/clone.json": {
+      "post": {
+        "operationId": "filterClone",
+        "summary": "Copy a filter campaign",
+        "tags": ["Filter Campaigns"],
+        "description": "Makes a new campaign from an existing one: the source's settings under a new name, counters at zero. GET with the same parameters in the query string is accepted too. Unlike set, it always creates a new campaign and never updates an existing campaign, so an already used name is allowed (keep the returned id). The copy belongs to the source's owner in every scope and that owner's plan is counted for limit; there is no user-required. All settings are copied, the schedule (wd1..wd7, fh, fm, th, tm, tz) and the visit-journal mode log included; trash is copied as the source's current value; the six counters start at zero; the visits of the source stay with the source. The success body is {status, data} where data is the new campaign exactly as filter/get returns it. Checks in order: scope, no-site, no-domain, limit, db.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["uid", "domain"],
+                "properties": {
+                  "uid": { "type": "integer", "description": "Source campaign ID, found in the scope. Missing, 0, unknown and foreign all give no-site." },
+                  "domain": { "type": "string", "description": "Name of the copy: plain text, tags stripped, never parsed as a URL. Missing or empty gives no-domain." }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "type": "object", "description": "Same fields as form-encoded." }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new campaign in the envelope. Errors: scope, no-site, no-domain, limit (HTTP 400), db (HTTP 500).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/CampaignDetail" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 15,
+                    "user": 13,
+                    "api": "https://example.com/fltr/13-4a3bc9d-15",
+                    "domain": "landing-copy",
+                    "mode": 0,
+                    "geo": ["us", "ca"],
+                    "mblack": 0,
+                    "black": "https://offer.example.com/",
+                    "mwhite": 0,
+                    "white": "https://white-page.example.com/",
+                    "trash": 0,
+                    "proto": 0,
+                    "mobile": 0,
+                    "os": [],
+                    "browser": [],
+                    "log": 0,
+                    "ipmain": false,
+                    "lang": false,
+                    "adid": false,
+                    "wd1": true, "wd2": true, "wd3": true, "wd4": true, "wd5": true, "wd6": true, "wd7": true,
+                    "fh": 0, "fm": 0, "th": 0, "tm": 0,
+                    "tz": "",
+                    "list": [5, 12],
+                    "langs": [],
+                    "nolangs": [],
+                    "nogeo": [],
+                    "uwl": [],
+                    "ubl": [],
+                    "wl": [],
+                    "stats": { "click": 0, "black": 0, "white": 0, "leads": 0, "approve": 0, "cancel": 0, "cash": 0, "cr": 0, "epc": 0, "appr": 0 },
+                    "postback": {
+                      "new": "https://example.com/api/filter/postback.json?id=13-4a3bc9d&uid=15&status=new",
+                      "approve": "https://example.com/api/filter/postback.json?id=13-4a3bc9d&uid=15&status=approve",
+                      "paid": "https://example.com/api/filter/postback.json?id=13-4a3bc9d&uid=15&status=approve&payout={payout}",
+                      "cancel": "https://example.com/api/filter/postback.json?id=13-4a3bc9d&uid=15&status=cancel"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/PaymentRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/fltr/{token}": {
+      "post": {
+        "operationId": "fltrCheck",
+        "summary": "Runtime cloaking endpoint — check visitor",
+        "tags": ["Cloaking Runtime"],
+        "security": [],
+        "description": "**Authentication is embedded in the URL path** as `{user_id}-{api_key}-{campaign_id}`. This endpoint is completely separate from the /api/ family: different routing, different auth, no standard framework errors, always HTTP 200 (errors in the body). Request body MUST be x-www-form-urlencoded (POST of $_SERVER). JSON body is not supported. No format suffix; /clo/{token} is an equivalent alias. The request host is not compared with the campaign domain. Each check writes a visit-journal row unless the campaign log mode suppresses it (paused/disabled campaigns never write one); the white/black counters (stats.white / stats.black) are incremented in every mode.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d+-[a-z0-9]+-\\d+$" },
+            "description": "Format: {user_id}-{api_key}-{campaign_id}. Example: 13-4a3bc9d...-1. API key must not contain dashes."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "All $_SERVER keys as x-www-form-urlencoded. Use http_build_query($_SERVER) in PHP.",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "description": "Visitor's $_SERVER superglobal fields",
+                "properties": {
+                  "HTTP_USER_AGENT": { "type": "string" },
+                  "HTTP_ACCEPT_LANGUAGE": { "type": "string" },
+                  "HTTP_REFERER": { "type": "string" },
+                  "HTTP_HOST": { "type": "string" },
+                  "HTTP_X_FORWARDED_FOR": { "type": "string" },
+                  "HTTP_CF_CONNECTING_IP": { "type": "string" },
+                  "HTTP_CLIENT_IP": { "type": "string" },
+                  "REMOTE_ADDR": { "type": "string" },
+                  "REQUEST_URI": { "type": "string" },
+                  "QUERY_STRING": { "type": "string" },
+                  "REQUEST_SCHEME": { "type": "string" }
+                },
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Always HTTP 200. Check status field.",
+            "headers": {
+              "X-Action": { "schema": { "type": "string", "enum": ["allow", "deny"] }, "description": "The action value; deny on errors" }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status", "result", "action", "type", "url"],
+                      "properties": {
+                        "status": { "type": "string", "enum": ["ok"] },
+                        "result": { "type": "string", "enum": ["allow", "deny"], "description": "Real filter decision before training mode override" },
+                        "action": { "type": "string", "enum": ["allow", "deny"], "description": "Decision after training mode override — use this to dispatch" },
+                        "type": { "type": "string", "enum": ["black", "white"], "description": "black=show target, white=show dummy. The client script dispatches on this value." },
+                        "url": { "type": "string", "description": "URL to serve (macro-expanded: {geo}, {geoup}, {ip} substituted)" },
+                        "ip": { "type": ["string", "boolean"], "description": "Resolved visitor IP; false when none could be resolved" },
+                        "geo": { "type": "string", "description": "2-letter country code (lowercase); zz when unknown" },
+                        "reason": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 14,
+                          "description": "Code of the real check (also in training modes; 0 in paused/disabled modes). 0=allowed. 1=junk request path, 2=wrong device/OS/browser, 3=geo blocked, 4=IPv4 blacklisted, 5=IPv4 net blacklisted, 6=IPv6 blacklisted, 7=header rule (black match / white miss) or no UA, 8=bot/preview/no IP, 9=wrong protocol, 10=wrong language, 11=trash/warm-up or probing path, 12=URL blacklisted/whitelist miss, 13=no ad click-id, 14=outside the campaign schedule"
+                        },
+                        "target": { "type": "string", "description": "Target URL regardless of decision (macro-expanded)" },
+                        "dummy": { "type": "string", "description": "Dummy URL regardless of decision (macro-expanded)" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": { "type": "string", "enum": ["error"] },
+                        "error": {
+                          "type": "string",
+                          "enum": ["bad-request", "access-denied", "bad-site", "no-data"],
+                          "description": "bad-request: malformed URL token; access-denied: banned/wrong key/wrong owner; bad-site: campaign not found; no-data: empty POST body"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "allow": {
+                    "value": {
+                      "status": "ok",
+                      "result": "allow",
+                      "action": "allow",
+                      "type": "black",
+                      "url": "https://offer.example.com/?geo=us",
+                      "ip": "1.2.3.4",
+                      "geo": "us",
+                      "reason": 0,
+                      "target": "https://offer.example.com/?geo=us",
+                      "dummy": "https://white-page.example.com/"
+                    }
+                  },
+                  "deny": {
+                    "value": {
+                      "status": "ok",
+                      "result": "deny",
+                      "action": "deny",
+                      "type": "white",
+                      "url": "https://white-page.example.com/",
+                      "ip": "1.2.3.4",
+                      "geo": "cn",
+                      "reason": 3,
+                      "target": "https://offer.example.com/",
+                      "dummy": "https://white-page.example.com/"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Filter Campaigns", "description": "CRUD for cloaking campaigns (/api/filter/*)" },
+    { "name": "Filter Blacklists", "description": "Add items to IP/header blacklists (lists are managed by the blacklist API)" },
+    { "name": "Filter Journal", "description": "Visit journal, statistics and journal clearing (filter/log, filter/stats, filter/clear)" },
+    { "name": "Cloaking Runtime", "description": "Runtime visit-check endpoint (/fltr/) with URL-embedded auth" }
+  ]
+}

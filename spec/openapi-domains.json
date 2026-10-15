@@ -1,0 +1,1404 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Parked Domains API",
+    "version": "1.0.0",
+    "description": "Manage parked domains. Personal domains: user > 0, gang = 0. Team domains: user = 0, gang > 0. In gang scope only team domains are accessible — personal domains of team members are NOT accessible. list/add require an active subscription except scope=admin; check/del/glue do not check billing at all. domains/files, domains/confirm, domains/change, domains/remove manage per-domain confirmation files served at the domain root (e.g. search-engine verification files, ads.txt); they also perform no billing check. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ]
+        },
+        "description": "Access scope (default: user)"
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, no-user, no-url, bad-url, duplicate, bad-domain, glue, no-name, bad-file; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "scope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "not-found (domain or confirmation file not found, or not accessible in the scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "not-found"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Domain": {
+        "type": "object",
+        "properties": {
+          "uid": {
+            "type": "integer",
+            "description": "Domain ID"
+          },
+          "url": {
+            "type": "string",
+            "description": "Human-readable name (after IDNA decode, e.g. пример.рф)"
+          },
+          "addr": {
+            "type": "string",
+            "description": "Punycode form (e.g. xn--e1afmkfd.xn--p1ai)"
+          },
+          "ip": {
+            "type": "string",
+            "description": "Current IP string"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner user ID (0 for team domain)"
+          },
+          "gang": {
+            "type": "integer",
+            "description": "Owner gang ID (0 for personal domain)"
+          },
+          "flow": {
+            "type": "integer",
+            "description": "Attached flow ID (0 = not attached)"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "description": "0=Waiting, 1=Active, 2=OK+SSL, 3=Error, 4=Wrong!"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "wait",
+              "active",
+              "ok",
+              "error",
+              "wrong"
+            ],
+            "description": "Human-readable status"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp when added"
+          },
+          "created": {
+            "type": "integer",
+            "description": "WHOIS registration date as YYYYMMDD integer"
+          },
+          "expires": {
+            "type": "integer",
+            "description": "WHOIS expiration date as YYYYMMDD integer"
+          },
+          "isok": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2
+            ],
+            "description": "0=no data, 1=delegated, 2=has issues"
+          }
+        }
+      },
+      "DomainShort": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer"
+          },
+          "gang": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          },
+          "addr": {
+            "type": "string"
+          }
+        }
+      },
+      "DomainListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "page",
+          "show",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Domain"
+            },
+            "description": "Domains keyed by domain ID"
+          }
+        }
+      },
+      "DomainFile": {
+        "type": "object",
+        "description": "Domain confirmation file. A file's owner (user/gang) is copied from the parent domain's owner at creation time and does not track later domain re-glue.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "File ID"
+          },
+          "dom": {
+            "type": "integer",
+            "description": "Parent domain ID"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner user ID (0 for team file)"
+          },
+          "gang": {
+            "type": "integer",
+            "description": "Owner gang ID (0 for personal file)"
+          },
+          "name": {
+            "type": "string",
+            "description": "File name at domain root, e.g. ads.txt"
+          },
+          "data": {
+            "type": "string",
+            "description": "Raw file content (max ~3500 chars)"
+          }
+        }
+      },
+      "DomainFileNoData": {
+        "type": "object",
+        "description": "Domain confirmation file without content — returned by domains/remove.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "File ID"
+          },
+          "dom": {
+            "type": "integer",
+            "description": "Parent domain ID"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner user ID (0 for team file)"
+          },
+          "gang": {
+            "type": "integer",
+            "description": "Owner gang ID (0 for personal file)"
+          },
+          "name": {
+            "type": "string",
+            "description": "File name at domain root, e.g. ads.txt"
+          }
+        }
+      },
+      "DomainFileListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DomainFile"
+            },
+            "description": "Confirmation files keyed by file ID"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/domains/list.json": {
+      "get": {
+        "operationId": "domainsList",
+        "summary": "List domains",
+        "tags": [
+          "Domains"
+        ],
+        "description": "scope=admin with user filters by the owner user; with gang filters by the owner team; with neither, no owner filter is applied (spans all domains). Error codes by HTTP status: 400 scope; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by gang (admin scope)"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Symbolic flow code to filter by"
+          },
+          {
+            "name": "fid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric flow ID"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Substring match in the human-readable domain name"
+          },
+          {
+            "name": "addr",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Substring match in the punycode domain name"
+          },
+          {
+            "name": "ip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by IP address"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4
+            }
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exact domain ID match"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Page size; 0 = all"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Domain list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainListResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "total": 3,
+                  "page": 1,
+                  "show": 0,
+                  "data": {
+                    "42": {
+                      "uid": 42,
+                      "url": "example.com",
+                      "addr": "example.com",
+                      "ip": "1.2.3.4",
+                      "user": 7,
+                      "gang": 0,
+                      "flow": 18,
+                      "status": 2,
+                      "stage": "ok",
+                      "time": 1714723200,
+                      "created": 20210914,
+                      "expires": 20260914,
+                      "isok": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/add.json": {
+      "post": {
+        "operationId": "domainsAdd",
+        "summary": "Add domain",
+        "tags": [
+          "Domains"
+        ],
+        "description": "Adds one domain. Domain check is NOT launched immediately — waits for CRON (~11.7h) or explicit domains/check call. Only one domain per call.\n\nScope rules: gang/admin+gang = team domain (owned by the team, user=0). admin+user (no gang) = personal domain for that user. admin without user and without gang = no-user error.\n\nError codes by HTTP status: 400 scope, no-user, no-url, bad-url, duplicate, bad-domain; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "Domain name. Protocol is stripped, www. is removed."
+                  },
+                  "user": {
+                    "type": "integer",
+                    "description": "Admin scope: owner user ID"
+                  },
+                  "gang": {
+                    "type": "integer",
+                    "description": "Admin scope: owner gang ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added domain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DomainShort"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 137,
+                    "user": 7,
+                    "gang": 0,
+                    "url": "example.com",
+                    "addr": "example.com"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/check.json": {
+      "get": {
+        "operationId": "domainsCheck",
+        "summary": "Manual domain status check",
+        "tags": [
+          "Domains"
+        ],
+        "description": "Launches an HTTPS/HTTP check and WHOIS lookup. Can take up to ~30 seconds if the domain doesn't respond. Notifications are not sent for manual checks. Errors return not-found regardless of whether the domain doesn't exist or access is denied for the given scope. No billing check. Error codes by HTTP status: 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Domain ID"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name (alias for url)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated domain data. Note: not-found covers both 'domain doesn't exist' and 'no access'.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Domain"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/del.json": {
+      "post": {
+        "operationId": "domainsDel",
+        "summary": "Delete domain",
+        "tags": [
+          "Domains"
+        ],
+        "description": "Deletes domain record, all its domain confirmation files, and detaches the domain from all attached flows (their domain becomes 0). No billing check. Error codes by HTTP status: 400 bad-domain; 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "integer",
+                    "description": "Domain ID"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Domain name"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "Domain name alias"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted domain data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DomainShort"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/glue.json": {
+      "post": {
+        "operationId": "domainsGlue",
+        "summary": "Attach or detach domain from flow",
+        "tags": [
+          "Domains"
+        ],
+        "description": "Attaches a domain to a flow or detaches (flow=0 or omit both flow and fid). Ownership rules: personal domain = flow must belong to the same user; team domain = flow must belong to the same team. No billing check. Error codes by HTTP status: 400 glue; 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "integer",
+                    "description": "Domain ID"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Domain name"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "Domain name alias"
+                  },
+                  "flow": {
+                    "type": "string",
+                    "description": "Symbolic flow code to attach. 0 or omit to detach."
+                  },
+                  "fid": {
+                    "type": "integer",
+                    "description": "Numeric flow ID (fallback if flow code fails to decode)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated domain with flow and code fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/DomainShort"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "flow": {
+                              "type": "integer",
+                              "description": "Attached flow ID (0 = detached)"
+                            },
+                            "code": {
+                              "type": [
+                                "string",
+                                "boolean"
+                              ],
+                              "description": "Symbolic flow code, or false when detached"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "examples": {
+                  "attached": {
+                    "value": {
+                      "status": "ok",
+                      "data": {
+                        "id": 42,
+                        "user": 7,
+                        "gang": 0,
+                        "url": "example.com",
+                        "addr": "example.com",
+                        "flow": 18,
+                        "code": "ef1c"
+                      }
+                    }
+                  },
+                  "detached": {
+                    "value": {
+                      "status": "ok",
+                      "data": {
+                        "id": 42,
+                        "user": 7,
+                        "gang": 0,
+                        "url": "example.com",
+                        "addr": "example.com",
+                        "flow": 0,
+                        "code": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/files.json": {
+      "get": {
+        "operationId": "domainsFiles",
+        "summary": "List domain confirmation files",
+        "tags": [
+          "Domains",
+          "Domain Files"
+        ],
+        "description": "Returns every confirmation file stored at a domain's root, with full content. No pagination — the whole list is always returned. Domain identified via the same uid/url/domain convention as check/del/glue. No billing check. Error codes by HTTP status: 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Domain ID"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name (alias for url)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmation file list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainFileListResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "total": 2,
+                  "data": {
+                    "7": {
+                      "id": 7,
+                      "dom": 42,
+                      "user": 0,
+                      "gang": 3,
+                      "name": "ads.txt",
+                      "data": "google.com, pub-0000000000000000, DIRECT"
+                    },
+                    "8": {
+                      "id": 8,
+                      "dom": 42,
+                      "user": 0,
+                      "gang": 3,
+                      "name": "google1234567890.html",
+                      "data": "google-site-verification: google1234567890.html"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/confirm.json": {
+      "post": {
+        "operationId": "domainsConfirm",
+        "summary": "Create or replace a domain confirmation file",
+        "tags": [
+          "Domains",
+          "Domain Files"
+        ],
+        "description": "Creates a new confirmation file at the domain root, or silently overwrites an existing file of the same name on the same domain (upsert on domain + file name). Domain identified via the same uid/url/domain convention as check/del/glue. No billing check. File ownership is copied from the domain's current owner at creation time. Error codes by HTTP status: 400 no-name, bad-file; 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Domain ID"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Domain name (alias for url)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "File name at domain root, e.g. ads.txt. Allowed extensions: txt/js/json/htm/html/css/xml (case-insensitive)."
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "File content. Trimmed and truncated to 3500 characters; empty content is allowed."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created/updated file record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DomainFile"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 8,
+                    "dom": 42,
+                    "user": 0,
+                    "gang": 3,
+                    "name": "google1234567890.html",
+                    "data": "google-site-verification: google1234567890.html"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/change.json": {
+      "post": {
+        "operationId": "domainsChange",
+        "summary": "Modify an existing domain confirmation file",
+        "tags": [
+          "Domains",
+          "Domain Files"
+        ],
+        "description": "Renames and/or rewrites the content of an existing confirmation file, identified directly by its numeric file ID (fid/file) — not by domain. A plain update, not an upsert: a rename colliding with another file of the same domain fails with bad-file. No billing check. Error codes by HTTP status: 400 no-name, bad-file; 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "fid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "File ID"
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Alias for fid (tried second); numeric file ID, not a name alias"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "New file name. Allowed extensions: txt/js/json/htm/html/css/xml."
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "New file content. Trimmed and truncated to 3500 characters."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated file record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DomainFile"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 8,
+                    "dom": 42,
+                    "user": 0,
+                    "gang": 3,
+                    "name": "google1234567890.html",
+                    "data": "google-site-verification: google1234567890.html (updated)"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/remove.json": {
+      "post": {
+        "operationId": "domainsRemove",
+        "summary": "Delete a domain confirmation file",
+        "tags": [
+          "Domains",
+          "Domain Files"
+        ],
+        "description": "Deletes a single confirmation file, identified directly by its numeric file ID (fid/file). Does not touch the domain or its flow attachment, and does not affect the domain's other files. No billing check. Error codes by HTTP status: 400 bad-file; 404 not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "fid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "File ID"
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Alias for fid (tried second)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted file record (without content).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DomainFileNoData"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 8,
+                    "dom": 42,
+                    "user": 0,
+                    "gang": 3,
+                    "name": "google1234567890.html"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Domains",
+      "description": "Parked domain management. not-found error covers both missing domains and access denied."
+    },
+    {
+      "name": "Domain Files",
+      "description": "Per-domain confirmation files served at the domain root (search-engine verification, ads.txt, etc.)."
+    }
+  ]
+}

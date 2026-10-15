@@ -1,0 +1,820 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Sites Storage API",
+    "version": "1.0.0",
+    "description": "Manage landing page storage: listing, uploading (ZIP or mirror), editing, deleting, and downloading sites. Sites are stored on separate storage servers; the site record and storage operations are independent — if storage is unavailable, the site record is created/deleted but files may not appear/disappear. All sites/* functions require an active subscription except scope=admin, which skips billing entirely. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ]
+        },
+        "description": "Access scope (default: user)"
+      },
+      "SiteId": {
+        "name": "uid",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        },
+        "description": "Site ID. Also accepted as sid="
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, user-required, wrong-glue, add, edit, del, download; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "scope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth (site not owned by the caller in the resolved scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "auth"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (site id missing), bad-id (site not found).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "bad-id"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Site": {
+        "type": "object",
+        "description": "Site record. Note: list uses uid as the id key, add/edit/del use id.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Site ID (in add/edit/del responses)"
+          },
+          "uid": {
+            "type": "integer",
+            "description": "Site ID (in list response)"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner user ID. 0 for gang sites."
+          },
+          "gang": {
+            "type": "integer",
+            "description": "Owner gang ID. 0 for personal sites."
+          },
+          "glue": {
+            "type": "integer",
+            "description": "Gang site visibility marker: 0=hidden from team, -1=public, >0=specific member ID. Meaningless for personal sites."
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path on storage server in format {2hex}/{enc-id} (e.g. ab/cm6gh1)"
+          }
+        }
+      },
+      "SiteListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "page",
+          "show",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total matching records"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Site"
+            },
+            "description": "Sites keyed by site ID"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/sites/list.json": {
+      "get": {
+        "operationId": "sitesList",
+        "summary": "List sites",
+        "tags": [
+          "Sites"
+        ],
+        "description": "With scope=admin and neither user nor gang supplied, no owner filter is applied at all (spans every user's and team's sites) — unlike domains/list. Error codes by HTTP status: 400 scope; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by user (gang/admin scope)"
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by gang (admin scope)"
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exact site ID match"
+          },
+          {
+            "name": "glue",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by the visibility marker (team sites)"
+          },
+          {
+            "name": "offer",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by offer ID (reserved field, rarely populated)"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search in the site name"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Page size; 0 = return all"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Site list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteListResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "total": 2,
+                  "page": 1,
+                  "show": 0,
+                  "data": {
+                    "42": {
+                      "uid": 42,
+                      "user": 7,
+                      "gang": 0,
+                      "glue": 0,
+                      "name": "Insurance landing",
+                      "path": "ab/cm6gh1"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sites/add.json": {
+      "post": {
+        "operationId": "sitesAdd",
+        "summary": "Upload site",
+        "tags": [
+          "Sites"
+        ],
+        "description": "Creates a new site in storage. For ZIP upload use multipart/form-data with field 'archive'. If both archive and url provided, archive wins. If neither — empty folder created.\n\nScope rules: user=personal site for current user (cannot create a gang site this way), gang=team site (visibility marker 0 unless glue set), admin+gang=gang site, admin+user=personal site for that user, admin without either=user-required.\n\nThe storage upload result is NOT checked — the site record is created regardless of whether storage succeeds.\n\nError codes by HTTP status: 400 scope, user-required, wrong-glue, add; 402 unpaid.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Site name"
+                  },
+                  "archive": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "ZIP archive of site files"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Mirror URL for httrack download (ignored if archive present)"
+                  },
+                  "glue": {
+                    "type": "integer",
+                    "description": "Visibility marker for gang site: 0=hidden, -1=public, >0=member ID"
+                  },
+                  "user": {
+                    "type": "integer",
+                    "description": "Owner user ID (admin scope)"
+                  },
+                  "gang": {
+                    "type": "integer",
+                    "description": "Owner gang ID (admin scope)"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "glue": {
+                    "type": "integer"
+                  },
+                  "user": {
+                    "type": "integer"
+                  },
+                  "gang": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Site"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 42,
+                    "user": 7,
+                    "gang": 0,
+                    "glue": 0,
+                    "name": "Insurance landing",
+                    "path": "ab/cm6gh1"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sites/edit.json": {
+      "post": {
+        "operationId": "sitesEdit",
+        "summary": "Edit site",
+        "tags": [
+          "Sites"
+        ],
+        "description": "Change name, visibility (glue), and/or replace content. Cannot change owner of a personal site — only the team-site visibility marker can change via glue. If archive/url is present, storage content is completely replaced; otherwise no storage request is sent. A call without any editable field still succeeds and changes nothing; an empty name is ignored. Error edit means the save failed (a database error, or the site has no owner). Error codes by HTTP status: 400 scope, wrong-glue, edit; 401 auth; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "integer",
+                    "description": "Site ID (also accepted as sid)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "New name (preserved if not set)"
+                  },
+                  "glue": {
+                    "type": "integer",
+                    "description": "New visibility marker (gang/admin only)"
+                  },
+                  "archive": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "New ZIP archive (replaces content)"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "New mirror URL (replaces content)"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "glue": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Site"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sites/del.json": {
+      "post": {
+        "operationId": "sitesDel",
+        "summary": "Delete site",
+        "tags": [
+          "Sites"
+        ],
+        "description": "Deletes the site record and removes files from storage (result of the storage request is not checked). Does NOT clean up the references to the site held by ways (site, second-step nxsite), flows (traffic-back site) and the stored clicks and leads. Error codes by HTTP status: 400 scope, del; 401 auth; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "integer"
+                  },
+                  "sid": {
+                    "type": "integer",
+                    "description": "Alias for uid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted site data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Site"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/sites/download.json": {
+      "get": {
+        "operationId": "sitesDownload",
+        "summary": "Download site as ZIP",
+        "tags": [
+          "Sites"
+        ],
+        "description": "Returns a binary ZIP archive of all site files. Admin scope can download any site without ownership check. Error codes by HTTP status: 400 scope, download; 401 auth; 402 unpaid; 404 no-id, bad-id.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/SiteId"
+          },
+          {
+            "name": "sid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Site ID alias"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP archive of the site files.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "attachment; filename=site.zip"
+              },
+              "Content-type": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "application/octet-stream"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Sites",
+      "description": "Landing page storage management. Storage server operations are fire-and-forget — the site record and storage are updated independently."
+    }
+  ]
+}

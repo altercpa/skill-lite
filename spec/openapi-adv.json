@@ -1,0 +1,1303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Adv API",
+    "version": "1.0.0",
+    "description": "Ad-spend export connectors: background integrations that periodically pull ad-network spend statistics (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin/Dolphin Cloud, FBtool, MixAdvert, AdPartner) and write per-click cost into the clicks stored by the tracker. No billing gate applies to any endpoint in this app. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ]
+        },
+        "description": "Access scope. Must be in GET query string even when body is JSON. Default: user. Ownership is strictly binary (owned by a user XOR by a team) — gang scope's optional user= sub-filter is not consulted by this app."
+      },
+      "AdvId": {
+        "name": "adv",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        },
+        "description": "Integration ID."
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, bad-type, no-user; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "scope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (integration not owned under the resolved scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "access"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (integration id missing), not-found (integration does not exist or its connector type can no longer be resolved).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "not-found"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "scope, no-id, not-found, access, bad-type, no-user, db"
+          }
+        }
+      },
+      "ConnectorType": {
+        "type": "string",
+        "enum": [
+          "facebook",
+          "tiktok",
+          "bigo",
+          "dolphin",
+          "dolphincl",
+          "fbtool",
+          "mgid",
+          "mixadvert",
+          "adpartner",
+          "luckyads",
+          "vk"
+        ]
+      },
+      "TypesResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Connector type code -> localized display name, sorted alphabetically by value."
+          }
+        }
+      },
+      "TagsResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Index of the field selector (as string key) -> label. 0=utm_content, 1=utm_term, 2=utm_medium, 3=utm_campaign, 4=utm_source, 5=domain, 6=subid, 7=flow, 8=way, 9=customer."
+          }
+        }
+      },
+      "IntegrationListEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Integration ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "1 active, 0 disabled"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ConnectorType"
+          },
+          "typename": {
+            "type": "string",
+            "description": "Localized connector name, or raw type code if no label exists"
+          },
+          "last": {
+            "type": "integer",
+            "description": "Unix timestamp of last CRON run"
+          },
+          "next": {
+            "type": "integer",
+            "description": "Unix timestamp of next scheduled run"
+          }
+        }
+      },
+      "IntegrationListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "page",
+          "show",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IntegrationListEntry"
+            },
+            "description": "Integrations keyed by integration ID"
+          }
+        }
+      },
+      "Integration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Integration ID"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ConnectorType"
+          },
+          "typename": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "Standard credential slot (meaningful only if in dataset.auths)"
+          },
+          "login": {
+            "type": "string",
+            "description": "Standard credential slot"
+          },
+          "pass": {
+            "type": "string",
+            "description": "Standard credential slot"
+          },
+          "user": {
+            "type": "string",
+            "description": "Standard credential slot"
+          },
+          "api": {
+            "type": "string",
+            "description": "Standard credential slot"
+          },
+          "key": {
+            "type": "string",
+            "description": "Standard credential slot"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Index into check-frequency labels: 0=Once a day, 1=Each hour, 2=Once 3 hours, 3=Twice a day, 4=3 times per day, 5=Once 3 days"
+          },
+          "period": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4,
+            "description": "Index into report-period labels: 0=Today, 1=Yesterday, 2=Today and yesterday, 3=3 days, 4=1 week"
+          },
+          "unique": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "1 = only count unique clicks"
+          },
+          "valid": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "1 = only count non-filtered (valid) clicks"
+          },
+          "source": {
+            "type": "string",
+            "description": "Optional utm_source value filter"
+          },
+          "field": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9,
+            "description": "Index into tag labels (see TagsResponse)"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Connector-specific settings, JSON-decoded"
+          }
+        }
+      },
+      "ConnectorField": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Field widget type, e.g. select, text, textarea, checkbox"
+          },
+          "name": {
+            "type": "string",
+            "description": "Field key, e.g. facebook_mode"
+          },
+          "head": {
+            "type": "string",
+            "description": "Label"
+          },
+          "descr": {
+            "type": "string",
+            "description": "Help text"
+          },
+          "value": {
+            "description": "Current value"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Present for select-type fields"
+          }
+        }
+      },
+      "IntegrationWithFields": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Integration"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConnectorField"
+                },
+                "description": "Connector-specific field descriptors. Empty for connectors with no extra settings."
+              }
+            }
+          }
+        ]
+      },
+      "FormDataset": {
+        "type": "object",
+        "properties": {
+          "auths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "url",
+                "user",
+                "login",
+                "pass",
+                "api",
+                "key"
+              ]
+            },
+            "description": "Which standard credential slots this connector's type actually uses"
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Same label list as adv/tags"
+          },
+          "repeats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Check-frequency labels, indexed by the repeat value"
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Report-period labels, indexed by the period value"
+          }
+        }
+      },
+      "LogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Log row ID"
+          },
+          "adv": {
+            "type": "integer",
+            "description": "Integration ID that made the request"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp"
+          },
+          "url": {
+            "type": "string",
+            "description": "Raw request URL, not truncated"
+          },
+          "post": {
+            "type": "string",
+            "description": "Raw POST body sent"
+          },
+          "reply": {
+            "type": "string",
+            "description": "Raw HTTP response body"
+          },
+          "cc": {
+            "type": "string",
+            "description": "JSON-encoded cURL config (headers, proxy, ...)"
+          },
+          "error": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "1 if the response body was empty"
+          },
+          "status": {
+            "type": "integer",
+            "description": "HTTP status code of the outbound request (0 if the request itself failed)"
+          },
+          "timer": {
+            "type": "number",
+            "description": "Request duration in seconds"
+          }
+        }
+      },
+      "LogListResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "page",
+          "show",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LogEntry"
+            },
+            "description": "Log rows keyed by log row ID"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/adv/types.json": {
+      "get": {
+        "operationId": "advTypes",
+        "summary": "List connector types",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Type code -> localized display name map, identical for every caller regardless of scope. Error codes by HTTP status: 400 scope.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector catalogue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/tags.json": {
+      "get": {
+        "operationId": "advTags",
+        "summary": "List spend-matching tag labels",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Ordered label list for the 'which field carries the ad/creative ID' selector (the field setting). Error codes by HTTP status: 400 scope.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag label list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/list.json": {
+      "get": {
+        "operationId": "advList",
+        "summary": "List ad-spend integrations",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Error codes by HTTP status: 400 scope.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Admin scope: filter to one user"
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Admin scope: filter to one team"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ConnectorType"
+            },
+            "description": "Filter by connector type; silently ignored if unrecognized"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search on integration name"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "0 = all rows, no paging"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated integration list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/form.json": {
+      "get": {
+        "operationId": "advForm",
+        "summary": "Get integration edit form",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Returns every stored field plus the connector's own extra field descriptors and all reference data (dataset) needed to render a complete edit form in one call. Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/AdvId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integration with connector fields and dataset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IntegrationWithFields"
+                    },
+                    "dataset": {
+                      "$ref": "#/components/schemas/FormDataset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/add.json": {
+      "post": {
+        "operationId": "advAdd",
+        "summary": "Create ad-spend integration",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Creates a new integration shell (type + name only, disabled by default). All credentials, schedule, and connector-specific fields are set afterwards via adv/edit. Error codes by HTTP status: 400 scope, bad-type, no-user; 500 db.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "$ref": "#/components/schemas/ConnectorType"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "integer",
+                    "description": "Owner user ID (admin scope, if no gang)"
+                  },
+                  "gang": {
+                    "type": "integer",
+                    "description": "Owner team ID (admin scope, alternative to user)"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created integration id/type/name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "type": {
+                          "$ref": "#/components/schemas/ConnectorType"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/edit.json": {
+      "post": {
+        "operationId": "advEdit",
+        "summary": "Edit ad-spend integration",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Partial update of standard fields (only keys present in the request are written — explicit 0/'' is honored). Connector-specific fields are all-or-nothing: if any of the connector's own field names is present, the entire meta object is rebuilt from the request, not merged. type is not editable. If the request has no recognized key, this is a no-op returning the unchanged integration. Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found; 500 db.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "adv"
+                ],
+                "properties": {
+                  "adv": {
+                    "type": "integer",
+                    "description": "Integration ID"
+                  },
+                  "status": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ],
+                    "description": "Activate/deactivate; no separate toggle endpoint"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "login": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "api": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "repeat": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 5
+                  },
+                  "period": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4
+                  },
+                  "unique": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "valid": {
+                    "type": [
+                      "integer",
+                      "boolean"
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9
+                  }
+                },
+                "additionalProperties": true,
+                "description": "additionalProperties covers connector-specific fields, e.g. facebook_mode, facebook_proxy, tiktok_accs — see adv/form's data.fields for the active connector's own set"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated integration (without fields).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Integration"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/update.json": {
+      "post": {
+        "operationId": "advUpdate",
+        "summary": "Force next run now",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Resets the integration's next-run time to now so the CRON scheduler picks it up on its next tick. Does not activate a disabled integration (status must be set separately via adv/edit). API-only capability, not wired into the UI. Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found; 500 db.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "adv"
+                ],
+                "properties": {
+                  "adv": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New next-run timestamp.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "next": {
+                          "type": "integer",
+                          "description": "Unix timestamp, equals time of this call"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/del.json": {
+      "post": {
+        "operationId": "advDel",
+        "summary": "Delete ad-spend integration",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Deletes the integration and purges all its request-log rows. Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found; 500 db.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "adv"
+                ],
+                "properties": {
+                  "adv": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "No data on success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/adv/log.json": {
+      "get": {
+        "operationId": "advLog",
+        "summary": "List integration request log",
+        "tags": [
+          "Adv"
+        ],
+        "description": "Reads the outbound-HTTP-request journal written whenever a connector makes a call. Error codes by HTTP status: 400 scope.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/AdvId"
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "description": "Applied only when present: truthy = errors only, present+falsy = successes only, absent = no filter"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "0 = all rows"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated request log.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Adv",
+      "description": "Ad-spend export connectors: catalogue, CRUD, scheduling, and request-log inspection"
+    }
+  ]
+}

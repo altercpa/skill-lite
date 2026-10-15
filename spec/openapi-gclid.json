@@ -1,0 +1,1360 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA — Google Conversions Export API (gclid)",
+    "version": "1.0.0",
+    "description": "JSON CRUD API for the gclid hack — offline-conversion export documents (\"docs\") for Google Ads / GA4. A doc is a lead filter plus an export configuration; it exposes a live CSV export URL that Google fetches on a schedule to import offline conversions. The hack calls no Google API. Ownership is user XOR gang: a personal doc has user>0, gang=0; a team doc has user=0, gang>0. Authentication uses the id credential (id={user}-{key}); the doc identifier is passed in the doc parameter. Editing is partial. There is no active field — gclid has no activation. Clone resets the export progress (last and lead to 0) so the copy re-exports from scratch. Available on AlterCPA Lite and Pro; offers are a Pro-only filter. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "domain.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "gclid",
+      "description": "Google conversion-export document management"
+    }
+  ],
+  "paths": {
+    "/api/gclid/list.json": {
+      "get": {
+        "operationId": "gclidList",
+        "summary": "Doc list",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text search by doc name"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by parked domain ID"
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by the exported lead field code"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 50
+            },
+            "description": "Records per page; 0 returns all without pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of docs keyed by doc ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/DocShort"
+                      }
+                    },
+                    "nav": {
+                      "$ref": "#/components/schemas/Nav"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/show.json": {
+      "get": {
+        "operationId": "gclidShow",
+        "summary": "Get doc",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Doc"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full doc record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/add.json": {
+      "post": {
+        "operationId": "gclidAdd",
+        "summary": "Create doc",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DocAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created doc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/edit.json": {
+      "post": {
+        "operationId": "gclidEdit",
+        "summary": "Edit doc (partial)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Doc"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DocEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated doc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/clone.json": {
+      "post": {
+        "operationId": "gclidClone",
+        "summary": "Clone doc under a new name (resets export progress)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Doc"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name of the new doc (written to name); the copy re-exports from scratch"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New doc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/del.json": {
+      "post": {
+        "operationId": "gclidDel",
+        "summary": "Delete doc",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Doc"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted doc id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/tags.json": {
+      "get": {
+        "operationId": "gclidTags",
+        "summary": "Bindable lead fields reference",
+        "tags": [
+          "gclid"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of field code to label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/domains.json": {
+      "get": {
+        "operationId": "gclidDomains",
+        "summary": "Parked domains reference (scope-owned)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of domain id to hostname; key 0 is the system domain and comes first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/offers.json": {
+      "get": {
+        "operationId": "gclidOffers",
+        "summary": "Offers reference (Pro only, scope-owned)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of offer id to name; empty object on AlterCPA Lite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/flows.json": {
+      "get": {
+        "operationId": "gclidFlows",
+        "summary": "Flows reference (scope-owned)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of flow id to name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/geo.json": {
+      "get": {
+        "operationId": "gclidGeo",
+        "summary": "Country codes reference",
+        "tags": [
+          "gclid"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of ISO country code to country name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gclid/goals.json": {
+      "get": {
+        "operationId": "gclidGoals",
+        "summary": "Conversion goals reference (informational, scope-owned)",
+        "tags": [
+          "gclid"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of goal id to code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Credential in the form {user}-{key}, e.g. 123-abcde"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "description": "Access scope; passed via GET only",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ],
+          "default": "user"
+        }
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "description": "Owner user ID for admin scope",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "description": "Team ID for admin scope",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Doc": {
+        "name": "doc",
+        "in": "query",
+        "required": true,
+        "description": "Numeric doc identifier",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope, no-name, no-item, bad-item; any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "no-name"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "Error unpaid (active subscription required).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "unpaid"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive) or access (doc outside the scope).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "no-id (doc missing), not-found (doc does not exist).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "not-found"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error db (database failure); framework errors func/app.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "db"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "scope, no-name, no-item, bad-item, no-id, not-found, access, db"
+          }
+        }
+      },
+      "Nav": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "show": {
+            "type": "integer"
+          }
+        }
+      },
+      "DocShort": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string",
+            "description": "Doc name"
+          },
+          "item": {
+            "type": "string",
+            "description": "Lead field code holding the Google click identifier (gclid) to export"
+          },
+          "domain": {
+            "type": "integer",
+            "description": "Parked domain ID used to build the export URL; 0 = the system domain"
+          },
+          "geo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ISO country codes the export is restricted to"
+          },
+          "last": {
+            "type": "integer",
+            "description": "Unix timestamp of the last export run, read-only (0 — never exported)"
+          },
+          "url": {
+            "type": "string",
+            "description": "Live CSV export URL, read-only and computed: on the doc's domain, or on the system domain when domain is 0 or not one of the owner's domains"
+          }
+        }
+      },
+      "DocFull": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DocShort"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "integer"
+              },
+              "gang": {
+                "type": "integer"
+              },
+              "offers": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "Offer IDs the export is restricted to (Pro only)"
+              },
+              "flows": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "Flow IDs the export is restricted to"
+              },
+              "utms": {
+                "type": "string",
+                "description": "utm_source filter"
+              },
+              "utmc": {
+                "type": "string",
+                "description": "utm_campaign filter"
+              },
+              "utmn": {
+                "type": "string",
+                "description": "utm_content filter"
+              },
+              "utmt": {
+                "type": "string",
+                "description": "utm_term filter"
+              },
+              "utmm": {
+                "type": "string",
+                "description": "utm_medium filter"
+              },
+              "utmd": {
+                "type": "string",
+                "description": "domain filter"
+              },
+              "trash": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1
+                ],
+                "description": "Exclude trash leads (1) or include them (0)"
+              },
+              "cancel": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1
+                ],
+                "description": "Exclude cancelled leads (1) or include them (0)"
+              },
+              "lead": {
+                "type": "integer",
+                "description": "High-water mark: highest exported lead ID, read-only"
+              }
+            }
+          }
+        ]
+      },
+      "DocResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/DocFull"
+          }
+        }
+      },
+      "DocAdd": {
+        "type": "object",
+        "required": [
+          "name",
+          "item"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Doc name"
+          },
+          "item": {
+            "type": "string",
+            "description": "Lead field code holding the gclid to export (see tags)"
+          },
+          "domain": {
+            "type": "integer",
+            "default": 0,
+            "description": "Parked domain ID used to build the export URL (see domains). Optional: omitted or 0 = the system domain."
+          },
+          "offers": {
+            "description": "Offer id or array of offer ids (Pro only; ignored on Lite)",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "flows": {
+            "description": "Flow id or array of flow ids",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "geo": {
+            "description": "ISO country code or array of ISO codes",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "utms": {
+            "type": "string",
+            "description": "utm_source filter"
+          },
+          "utmc": {
+            "type": "string",
+            "description": "utm_campaign filter"
+          },
+          "utmn": {
+            "type": "string",
+            "description": "utm_content filter"
+          },
+          "utmt": {
+            "type": "string",
+            "description": "utm_term filter"
+          },
+          "utmm": {
+            "type": "string",
+            "description": "utm_medium filter"
+          },
+          "utmd": {
+            "type": "string",
+            "description": "domain filter"
+          },
+          "trash": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 1,
+            "description": "Exclude trash leads (1) or include them (0)"
+          },
+          "cancel": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Exclude cancelled leads (1) or include them (0)"
+          }
+        }
+      },
+      "DocEdit": {
+        "type": "object",
+        "description": "Partial — only sent fields are written. Owner fields and the read-only progress fields (last, lead) are never written. There is no active field.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string",
+            "description": "Must be a valid bindable field (see tags)"
+          },
+          "domain": {
+            "type": "integer",
+            "description": "Parked domain ID used to build the export URL; 0 = the system domain"
+          },
+          "offers": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "flows": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            ]
+          },
+          "geo": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "utms": {
+            "type": "string"
+          },
+          "utmc": {
+            "type": "string"
+          },
+          "utmn": {
+            "type": "string"
+          },
+          "utmt": {
+            "type": "string"
+          },
+          "utmm": {
+            "type": "string"
+          },
+          "utmd": {
+            "type": "string"
+          },
+          "trash": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "cancel": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      }
+    }
+  }
+}

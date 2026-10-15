@@ -1,0 +1,876 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Blacklist API",
+    "version": "1.0.0",
+    "description": "Manage the traffic-filter block-lists consulted by the cloaking filter and the flow filter: create and configure lists (IPv4 addresses, IPv4 networks, IPv6 networks, request-header rules), edit their entries one by one, empty a list, import and export them as CSV, and list which lists a filter campaign may attach. All functions accept the scope parameter (GET query string only) and admin-scope owner selection via gang/user. Request fields may be sent in the query string, as form data or as a JSON body; POST wins on collision. Success is HTTP 200 with status \"ok\"; errors use the {status:\"error\", error} envelope with HTTP 400 (db 500, bad key 401, banned 403). export returns CSV instead of JSON."
+  },
+  "servers": [
+    { "url": "https://{tracker}", "variables": { "tracker": { "default": "example.com", "description": "Tracker domain" } } }
+  ],
+  "security": [{ "ApiToken": [] }],
+  "tags": [
+    { "name": "Blacklist Lists", "description": "Create, configure, list and delete block-lists" },
+    { "name": "Blacklist Entries", "description": "Entries of a block-list: browse, add, edit, remove, empty, import, export" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": { "type": "string", "enum": ["user", "gang", "team", "admin", "sys", "system", "all"] },
+        "description": "Access scope. Must be in GET query string even when body is JSON. Default: user (own personal lists). gang/team: the team's lists, team admins only. admin/sys/system/all: requires an admin account; without gang/user it addresses global lists."
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "Admin scope only: owner team. Wins over user when both are given. Non-numeric -> bad-gang; must exist in add and avail."
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "Admin scope: owner user (non-numeric -> bad-user; must exist in add and avail). Gang scope: a member of the own team (needed by avail without uid)."
+      },
+      "ActingUser": {
+        "name": "uu",
+        "in": "query",
+        "schema": { "type": "integer" },
+        "description": "Act as this user (GET or POST). Requires the key owner to be an admin account."
+      },
+      "ListId": {
+        "name": "list",
+        "in": "query",
+        "required": true,
+        "schema": { "type": "integer" },
+        "description": "Block-list ID within the scope. Missing or 0 -> no-list; not found or not in the scope -> bad-list."
+      }
+    },
+    "responses": {
+      "DbError": {
+        "description": "Database write failed (error db).",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "status": "error", "error": "db" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["status", "error"],
+        "properties": {
+          "status": { "type": "string", "enum": ["error"] },
+          "error": {
+            "type": "string",
+            "description": "scope, bad-gang, bad-user, no-site, no-user, no-name, bad-name, bad-type, no-list, bad-list, locked, bad-search, bad-comment, no-ip, no-value, bad-ip, bad-value, bad-size, no-item, bad-item, duplicate, bad-url, bad-period, target, limit, no-file, bad-file, db"
+          },
+          "message": { "type": "string", "description": "Localized text; present for bad-url, bad-period, target and limit of edit" }
+        }
+      },
+      "Nav": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "description": "Matching rows" },
+          "page": { "type": "integer" },
+          "pages": { "type": "integer" },
+          "show": { "type": "integer", "description": "Page size" }
+        }
+      },
+      "KindNames": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "description": "List kind code (1-4) -> localized name: 1 IP addresses, 2 IP networks, 3 IPv6 addresses, 4 Headers"
+      },
+      "BlacklistList": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "List ID" },
+          "name": { "type": "string" },
+          "type": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Kind: 1=ip, 2=net, 3=ip6, 4=bl (header rules). Fixed at creation." },
+          "role": { "type": "string", "enum": ["feed", "team", "user", "admin"], "description": "Owner kind: feed = supplier feed (system list), team, user = personal, admin = global manual list" },
+          "user": { "type": "integer", "description": "Owner user ID, 0 if none" },
+          "gang": { "type": "integer", "description": "Owner team ID, 0 if none" },
+          "status": { "type": "boolean", "description": "Active; only active lists can be chosen in campaigns" },
+          "default": { "type": "boolean", "description": "Default list, used when a campaign has no explicit selection" },
+          "size": { "type": "integer", "description": "Entry count" },
+          "update": { "type": "integer", "description": "Unix time of the last successful update, 0 = never" },
+          "locked": { "type": "boolean", "description": "Entries cannot be changed by hand (supplier feed or URL mirror)" },
+          "mirror": { "type": "boolean", "description": "Mirror of a file at url: not a feed, auto on, url non-empty" },
+          "auto": { "type": "boolean", "description": "Automatic update switch (feed refresh or URL mirror)" },
+          "url": { "type": "string", "description": "Mirror source address" },
+          "period": { "type": "integer", "description": "Mirror update period, seconds" },
+          "periods": { "type": "array", "items": { "type": "integer" }, "description": "Allowed periods for this list's role; empty for feed lists" },
+          "check": { "type": "integer", "description": "Unix time of the last mirror attempt" },
+          "fail": { "type": "integer", "description": "Consecutive failed mirror attempts" },
+          "feed": { "type": "string", "description": "Supplier-feed UID, empty string otherwise" },
+          "private": { "type": "boolean", "description": "Feed requires an access key" },
+          "key": { "type": "string", "description": "Feed access key" }
+        }
+      },
+      "AvailList": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string", "description": "Raw list name" },
+          "type": { "type": "integer", "enum": [1, 2, 3, 4] },
+          "role": { "type": "string", "enum": ["feed", "team", "user", "admin"] },
+          "default": { "type": "boolean", "description": "Default list for this owner" },
+          "selected": { "type": "boolean", "description": "Chosen in campaign uid; always false without uid" }
+        }
+      },
+      "IpEntry": {
+        "type": "object",
+        "description": "Entry of an ip list (type 1)",
+        "properties": {
+          "id": { "type": "integer" },
+          "ip": { "type": "string", "description": "IPv4 address" },
+          "comment": { "type": "integer", "minimum": 0, "maximum": 255, "description": "Reason code: 1=Public list, 2=Suspicious, 3=Corporate, 4=Different User-Agent, 5=GEO error, 6=Header error, 7=Multiple errors, 8=Bad request, 9=Bot" },
+          "ttl": { "type": "integer", "description": "Expiry Unix timestamp, 0 = never" }
+        }
+      },
+      "NetEntry": {
+        "type": "object",
+        "description": "Entry of a net list (type 2) or ip6 list (type 3)",
+        "properties": {
+          "id": { "type": "integer" },
+          "ip": { "type": "string", "description": "Network start address" },
+          "size": { "type": "integer", "description": "Prefix length: 8-31 for net, 32-128 for ip6" },
+          "to": { "type": "string", "description": "Last address of the network" },
+          "comment": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "ttl": { "type": "integer", "description": "Expiry Unix timestamp, 0 = never" }
+        }
+      },
+      "HeaderEntry": {
+        "type": "object",
+        "description": "Entry of a bl list (type 4)",
+        "properties": {
+          "id": { "type": "integer" },
+          "value": { "type": "string", "description": "Header text or PCRE, at most 250 characters" },
+          "type": { "type": "integer", "minimum": 1, "maximum": 255, "description": "Header ID (1=User-Agent, 2=Accept, 5=Accept-Language, 23=Referer, 30=X-Forwarded-For, ...). Unknown IDs are stored but never match." },
+          "regexp": { "type": "boolean", "description": "true = value is a PCRE with delimiters; false = case-insensitive substring" },
+          "white": { "type": "boolean", "description": "true = white rule (blocks when the header is missing or does not match); false = black rule (blocks on match)" },
+          "comment": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "ttl": { "type": "integer", "description": "Expiry Unix timestamp, 0 = never" }
+        }
+      },
+      "BlacklistEntry": {
+        "description": "Entry object; the shape depends on the list kind",
+        "anyOf": [
+          { "$ref": "#/components/schemas/IpEntry" },
+          { "$ref": "#/components/schemas/NetEntry" },
+          { "$ref": "#/components/schemas/HeaderEntry" }
+        ]
+      },
+      "BlockResult": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BlacklistEntry" },
+          {
+            "type": "object",
+            "properties": {
+              "added": { "type": "boolean", "description": "true = new row inserted; false = an existing entry with the same identity was updated" }
+            }
+          }
+        ]
+      },
+      "ImportResult": {
+        "type": "object",
+        "properties": {
+          "add": { "type": "integer", "description": "Entries added" },
+          "upd": { "type": "integer", "description": "Entries updated (matched by identity; a duplicate row inside the file counts as an update)" },
+          "bad": { "type": "integer", "description": "Rejected rows (invalid row or failed insert)" },
+          "del": { "type": "integer", "description": "Stored duplicate twins removed (kind bl only; 0 otherwise)" },
+          "size": { "type": "integer", "description": "Resulting list size (also stored)" }
+        }
+      },
+      "AddRequest": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string", "description": "List name (tags stripped, trimmed). Empty -> no-name. Keep within 100 characters (the API does not truncate)." },
+          "type": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Kind: 1=ip, 2=net, 3=ip6, 4=bl. Otherwise bad-type. Cannot be changed later." },
+          "gang": { "type": "integer", "description": "Admin scope: owner team (must exist)" },
+          "user": { "type": "integer", "description": "Admin scope: owner user (must exist)" }
+        }
+      },
+      "EditRequest": {
+        "type": "object",
+        "required": ["list"],
+        "properties": {
+          "list": { "type": "integer", "description": "List ID in the scope" },
+          "name": { "type": "string", "description": "New name; empty after cleaning -> bad-name" },
+          "status": { "type": ["integer", "boolean", "string"], "description": "Active flag (loose boolean): 0, empty and \"0\" = off; anything else, including the string \"false\", = on. Send 0 or 1." },
+          "default": { "type": ["integer", "boolean", "string"], "description": "Default flag, same truthiness as status" },
+          "key": { "type": "string", "description": "Feed lists only: access key. Ignored for other roles." },
+          "auto": { "type": ["integer", "boolean", "string"], "description": "Feed lists: automatic update switch. Other lists: URL mirroring on/off (same loose boolean as status)." },
+          "url": { "type": "string", "description": "Not for feed lists. Mirror source address (http/https, max 500 chars, public host, port 80/443); empty string clears it. Invalid, or auto on with empty url -> bad-url." },
+          "period": { "type": "integer", "description": "Not for feed lists. Mirror update period, seconds; must be allowed for the list's role (see periods in the list object)." }
+        }
+      },
+      "ListIdRequest": {
+        "type": "object",
+        "required": ["list"],
+        "properties": {
+          "list": { "type": "integer", "description": "List ID in the scope" }
+        }
+      },
+      "BlockRequest": {
+        "type": "object",
+        "required": ["list"],
+        "description": "Which fields are required depends on the list kind: ip needs ip; net and ip6 need ip and size; bl needs value and type.",
+        "properties": {
+          "list": { "type": "integer", "description": "List ID in the scope; the list must not be locked" },
+          "ip": { "type": "string", "description": "Kinds ip, net, ip6: address or network address. Missing -> no-ip; invalid, private or reserved -> bad-ip. Networks are masked to the network start." },
+          "size": { "type": "integer", "description": "Kinds net (8-31) and ip6 (32-128): prefix length, otherwise bad-size. Missing counts as 0." },
+          "value": { "type": "string", "description": "Kind bl: header text or PCRE. Missing -> no-value; empty, not UTF-8 or longer than 250 -> bad-value." },
+          "type": { "type": "integer", "minimum": 1, "maximum": 255, "description": "Kind bl: header ID, otherwise bad-type. Missing counts as 0." },
+          "regexp": { "type": ["integer", "boolean"], "description": "Kind bl: 1 = value is a PCRE with delimiters (default 0)" },
+          "white": { "type": ["integer", "boolean"], "description": "Kind bl: 1 = white rule (default 0)" },
+          "comment": { "type": "integer", "minimum": 0, "maximum": 255, "description": "Reason code (default 0)" },
+          "ttl": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Expiry Unix timestamp, 0 = never (default 0)" }
+        }
+      },
+      "RemoveRequest": {
+        "type": "object",
+        "required": ["list", "item"],
+        "properties": {
+          "list": { "type": "integer", "description": "List ID in the scope; the list must not be locked" },
+          "item": { "type": "integer", "description": "Entry ID. Missing/0 -> no-item; not in this list -> bad-item." }
+        }
+      },
+      "ChangeRequest": {
+        "type": "object",
+        "required": ["list", "item"],
+        "description": "Fields not sent keep their stored values. If no entry field is sent, the entry is returned unchanged without a write.",
+        "properties": {
+          "list": { "type": "integer", "description": "List ID in the scope; the list must not be locked" },
+          "item": { "type": "integer", "description": "Entry ID. Missing/0 -> no-item; not in this list -> bad-item." },
+          "ip": { "type": "string", "description": "Kinds ip, net, ip6: new address / network start" },
+          "size": { "type": "integer", "description": "Kinds net, ip6: new prefix length" },
+          "value": { "type": "string", "description": "Kind bl: new header text / PCRE" },
+          "type": { "type": "integer", "minimum": 1, "maximum": 255, "description": "Kind bl: new header ID" },
+          "regexp": { "type": ["integer", "boolean"], "description": "Kind bl" },
+          "white": { "type": ["integer", "boolean"], "description": "Kind bl" },
+          "comment": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "ttl": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/blacklist/avail.json": {
+      "get": {
+        "operationId": "blacklistAvail",
+        "summary": "Lists a filter campaign may attach",
+        "tags": ["Blacklist Lists"],
+        "description": "Returns the active block-lists the campaign owner may attach, with default and selected flags (data of the campaign \"Filters set\" picker). Order: active global lists, then the owner's personal lists, then the owner's team lists; each part sorted by name, duplicates keep the first occurrence. Inactive lists are never offered, and an inactive list stored in the campaign is not reported as selected. Without uid the list owner is the scope user: gang scope needs user=<member>, admin scope needs user=<id>, user scope uses the key owner; none -> no-user.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "name": "uid", "in": "query", "schema": { "type": "integer" }, "description": "Filter campaign ID. When sent (even 0) the campaign must exist in the scope, else no-site. The campaign owner becomes the list owner and its selection drives the selected flag." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Offered lists keyed by list ID (an empty map is serialized as []).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/AvailList" } },
+                    "dataset": {
+                      "type": "object",
+                      "properties": { "types": { "$ref": "#/components/schemas/KindNames" } }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "5": { "id": 5, "name": "Public proxies", "type": 1, "role": "admin", "default": true, "selected": false },
+                    "12": { "id": 12, "name": "My bad UAs", "type": 4, "role": "user", "default": false, "selected": true }
+                  },
+                  "dataset": { "types": { "1": "IP addresses", "2": "IP networks", "3": "IPv6 addresses", "4": "Headers" } }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-site, no-user.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/blacklist/list.json": {
+      "get": {
+        "operationId": "blacklistList",
+        "summary": "List block-lists of the scope",
+        "tags": ["Blacklist Lists"],
+        "description": "Returns the block-lists owned by the scope, active ones first, then by name. user scope: own personal lists; gang scope: the team's lists; admin + gang: that team's lists; admin + user: that user's personal lists; admin alone: global lists including supplier feeds. A page beyond the last returns empty data.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "name": "type", "in": "query", "schema": { "type": "integer", "enum": [1, 2, 3, 4] }, "description": "List kind filter. Sent but not 1-4 -> bad-type; empty string = no filter." },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Name search: at least 2 characters, split by spaces/commas, all words must occur as substrings (case-insensitive). Text yielding no words adds no filter." },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "show", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 0 }, "description": "Page size. 0 = return every list, no paging and no nav." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lists keyed by list ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/BlacklistList" } },
+                    "nav": { "$ref": "#/components/schemas/Nav", "description": "Only when show > 0" },
+                    "dataset": {
+                      "type": "object",
+                      "properties": {
+                        "types": { "$ref": "#/components/schemas/KindNames" },
+                        "periods": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Period seconds -> localized label (all nine periods)" }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "12": {
+                      "id": 12, "name": "My bad UAs", "type": 4, "role": "user", "user": 7, "gang": 0,
+                      "status": true, "default": false, "size": 42, "update": 0, "locked": false,
+                      "mirror": false, "auto": false, "url": "", "period": 0,
+                      "periods": [10800, 21600, 43200, 86400, 259200, 604800],
+                      "check": 0, "fail": 0, "feed": "", "private": false, "key": ""
+                    }
+                  },
+                  "nav": { "total": 1, "page": 1, "pages": 1, "show": 50 },
+                  "dataset": {
+                    "types": { "1": "IP addresses", "2": "IP networks", "3": "IPv6 addresses", "4": "Headers" },
+                    "periods": { "10800": "3 hours", "86400": "1 day" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, bad-type.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/blacklist/show.json": {
+      "get": {
+        "operationId": "blacklistShow",
+        "summary": "Entries of a block-list",
+        "tags": ["Blacklist Entries"],
+        "description": "Returns the entries of one list, sorted ascending by address (ip, net, ip6) or by value (bl) and paged, with search and filters. Works for locked lists too.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "$ref": "#/components/parameters/ListId" },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Depends on the kind: ip = exact IPv4 address; net = networks containing this IPv4 address; ip6 = networks containing this IPv6 address; bl = substring of value. Invalid address or array -> bad-search. Empty = no filter." },
+          { "name": "comment", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 255 }, "description": "Reason-code filter; 0 = no filter. Not 0-255 digits -> bad-comment." },
+          { "name": "type", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 255 }, "description": "Kind bl only: header-ID filter; 0 = no filter; invalid -> bad-type. Ignored for other kinds." },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "show", "in": "query", "schema": { "type": "integer", "maximum": 1000, "default": 50 }, "description": "Page size; less than 1 -> 50; maximum 1000." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries keyed by entry ID, with paging and the list object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "nav"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/BlacklistEntry" } },
+                    "nav": { "$ref": "#/components/schemas/Nav" },
+                    "dataset": {
+                      "type": "object",
+                      "properties": {
+                        "list": { "$ref": "#/components/schemas/BlacklistList" },
+                        "comments": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Reason code (1-9) -> localized name" },
+                        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Kind bl only: header ID -> header name" }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "301": { "id": 301, "value": "HeadlessChrome", "type": 1, "regexp": false, "white": false, "comment": 9, "ttl": 0 }
+                  },
+                  "nav": { "total": 1, "page": 1, "pages": 1, "show": 50 },
+                  "dataset": {
+                    "list": { "id": 12, "name": "My bad UAs", "type": 4, "role": "user", "user": 7, "gang": 0, "status": true, "default": false, "size": 1 },
+                    "comments": { "1": "Public list", "9": "Bot" },
+                    "headers": { "1": "User-Agent", "2": "Accept" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, bad-search, bad-comment, bad-type.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/blacklist/add.json": {
+      "post": {
+        "operationId": "blacklistAdd",
+        "summary": "Create a block-list",
+        "tags": ["Blacklist Lists"],
+        "description": "Creates an empty list owned by the scope. User and team lists start with status true, default false. A global list (admin scope without gang/user) is created with status false and default false: activate it with edit. Check order: scope, no-name, bad-type, bad-gang/bad-user. An admin log entry is written only in admin scope. Configure mirror and feed fields afterwards with edit.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/AddRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/AddRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/BlacklistList" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 13, "name": "Scrapers", "type": 2, "role": "user", "user": 7, "gang": 0,
+                    "status": true, "default": false, "size": 0, "update": 0, "locked": false,
+                    "mirror": false, "auto": false, "url": "", "period": 0,
+                    "periods": [10800, 21600, 43200, 86400, 259200, 604800],
+                    "check": 0, "fail": 0, "feed": "", "private": false, "key": ""
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, no-name, bad-type, bad-gang, bad-user.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/edit.json": {
+      "post": {
+        "operationId": "blacklistEdit",
+        "summary": "Update block-list settings",
+        "tags": ["Blacklist Lists"],
+        "description": "Partial update: only fields present in the request change; with none recognised the unchanged list is returned without writing. The kind cannot be changed. Mirror rules (when any of url, period, auto is sent for a non-feed list; missing ones come from the stored row): url must be http/https with a public host; auto on needs a non-empty url (bad-url); a period not allowed for the role -> bad-period when auto is on, silently stored as 0 when auto is off; auto on for a list selected as an engine auto-block target -> target; auto on beyond 5 mirrored lists per owner (user/team roles) -> limit. bad-url, bad-period, target and limit carry a localized message. Turning mirroring on makes the list locked and the next cron run replaces its entries with the file. Locked and feed lists can be edited (only their entries are protected). Admin log entry only in admin scope.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/EditRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/EditRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/BlacklistList" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": {
+                    "id": 13, "name": "Scrapers", "type": 2, "role": "user", "user": 7, "gang": 0,
+                    "status": true, "default": true, "size": 0, "update": 0, "locked": true,
+                    "mirror": true, "auto": true, "url": "https://example.org/bad-nets.csv", "period": 86400,
+                    "periods": [10800, 21600, 43200, 86400, 259200, 604800],
+                    "check": 0, "fail": 0, "feed": "", "private": false, "key": ""
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, bad-name, bad-url, bad-period, target, limit.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "status": "error", "error": "bad-url", "message": "Invalid file address" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/del.json": {
+      "post": {
+        "operationId": "blacklistDel",
+        "summary": "Delete a block-list",
+        "tags": ["Blacklist Lists"],
+        "description": "Deletes the list together with all its entries. No lock check: feed and mirror lists can be deleted (a supplier feed list reappears with the next feed update). The list ID is not removed from campaigns' selections; the runtime ignores IDs that no longer exist. An admin log entry is written in every scope.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/ListIdRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/ListIdRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted list ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "type": "object", "properties": { "id": { "type": "integer" } } }
+                  }
+                },
+                "example": { "status": "ok", "data": { "id": 13 } }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/block.json": {
+      "post": {
+        "operationId": "blacklistBlock",
+        "summary": "Add one entry (upsert)",
+        "tags": ["Blacklist Entries"],
+        "description": "Adds one entry to a list. If an entry with the same identity exists it is updated instead (added: false): ip = address; net/ip6 = network start + size; bl = type + value, compared case-insensitively unless regexp is set. On update only the fields present in the request change and extra copies of the same bl key are removed. The list must be in the scope, have a valid kind (else bad-list) and not be locked. the list size is recounted when an entry was added or twins removed; no cache is reset, so IPv4 network entries may take effect with a delay of up to 666 seconds for recently checked addresses.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/BlockRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/BlockRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The entry object plus the added flag.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/BlockResult" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": { "id": 301, "value": "HeadlessChrome", "type": 1, "regexp": false, "white": false, "comment": 9, "ttl": 0, "added": true }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, locked, no-ip, no-value, bad-size, bad-type, bad-ip, bad-value.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/remove.json": {
+      "post": {
+        "operationId": "blacklistRemove",
+        "summary": "Delete one entry",
+        "tags": ["Blacklist Entries"],
+        "description": "Removes one entry from a list and recounts the list size. The list must not be locked. To delete every entry of a list at once use blacklist/clean.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/RemoveRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/RemoveRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Removed entry ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "type": "object", "properties": { "id": { "type": "integer" } } }
+                  }
+                },
+                "example": { "status": "ok", "data": { "id": 301 } }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, locked, no-item, bad-item.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/change.json": {
+      "post": {
+        "operationId": "blacklistChange",
+        "summary": "Update one entry",
+        "tags": ["Blacklist Entries"],
+        "description": "Partial update of one entry; fields not sent keep their stored values. The new row is validated like block; if it would duplicate another entry of the same list (same identity as in block) -> duplicate. The list must be in the scope, have a valid kind and not be locked. The list size is unaffected.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/ChangeRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChangeRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated entry (no added field).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/BlacklistEntry" }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "data": { "id": 301, "value": "HeadlessChrome", "type": 1, "regexp": false, "white": false, "comment": 7, "ttl": 1893456000 }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, locked, no-item, bad-item, bad-size, bad-type, bad-ip, bad-value, duplicate.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/clean.json": {
+      "post": {
+        "operationId": "blacklistClean",
+        "summary": "Empty a list",
+        "tags": ["Blacklist Entries"],
+        "description": "Deletes every entry of one list in place: the list keeps its ID, name, status, default flag and mirror settings, so the campaigns that selected it keep selecting it. The same scope rules as del apply; the list must have a valid kind and must not be locked (feed list or URL mirror). Only the entries of the list's kind are deleted and the list size is reset to 0. No cache is cleared and no admin log entry is written; an IPv4 network may keep matching for up to 666 seconds because of the network lookup cache.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/ListIdRequest" } },
+            "application/json": { "schema": { "$ref": "#/components/schemas/ListIdRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Emptied list ID and the number of entries deleted (0 for an empty list).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "integer", "description": "List ID" },
+                        "del": { "type": "integer", "description": "Entries deleted" }
+                      }
+                    }
+                  }
+                },
+                "example": { "status": "ok", "data": { "id": 12, "del": 4210 } }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, locked.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/import.json": {
+      "post": {
+        "operationId": "blacklistImport",
+        "summary": "Merge a CSV file into a list",
+        "tags": ["Blacklist Entries"],
+        "description": "Merges the entries of an uploaded CSV file into a list (multipart/form-data, file field import; list may be in the query string or the form). CSV: UTF-8 (leading BOM skipped), no header line (a header counts as one rejected row), blank lines skipped; delimiter auto-detected among comma, semicolon and TAB; quote character is a double quote. Columns by position, missing trailing columns = 0: ip = ip, comment, ttl; net and ip6 = ip, size, comment, ttl; bl = value, type, regexp, comment, ttl, white (the same format export produces). Rows are validated like block; an invalid row is counted in bad and skipped. Merge only: matched entries are updated with the file's comment/ttl (bl also value, type, regexp, white; absent columns overwrite with 0), others are added, nothing is deleted except stored twins of a bl key present in the file. A file without any valid row is not an error. File size limit by list role: 8388608 bytes for personal/team lists, 268435456 bytes for global lists. The list must not be locked. No row limit and no cache reset.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["list", "import"],
+                "properties": {
+                  "list": { "type": "integer", "description": "Target list ID in the scope (may instead be in the query string)" },
+                  "import": { "type": "string", "format": "binary", "description": "CSV file" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import counters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "data": { "$ref": "#/components/schemas/ImportResult" }
+                  }
+                },
+                "example": { "status": "ok", "data": { "add": 120, "upd": 5, "bad": 2, "del": 0, "size": 4210 } }
+              }
+            }
+          },
+          "400": {
+            "description": "Error. Codes: scope, bad-gang, bad-user, no-list, bad-list, locked, limit (upload exceeds the PHP upload limit or the role's size limit), no-file (no uploaded file), bad-file (file cannot be read).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/DbError" }
+        }
+      }
+    },
+    "/api/blacklist/export.json": {
+      "get": {
+        "operationId": "blacklistExport",
+        "summary": "Download a list as CSV",
+        "tags": ["Blacklist Entries"],
+        "description": "Returns all entries of a list as a CSV file instead of a JSON envelope; the .json suffix is ignored. One line per entry, comma-separated, no header line, no paging, no ordering. Line formats: ip = ip,comment,ttl; net and ip6 = ip,size,comment,ttl; bl = \"value\" (quotes doubled),type,regexp 0/1,comment,ttl,white 0/1. The output is exactly what import reads and what a URL mirror expects. Works for locked and feed lists. Errors are returned as JSON before any CSV header is sent.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Scope" },
+          { "$ref": "#/components/parameters/Gang" },
+          { "$ref": "#/components/parameters/User" },
+          { "$ref": "#/components/parameters/ActingUser" },
+          { "$ref": "#/components/parameters/ListId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": { "type": "string" },
+                "description": "attachment;filename=filter-{kind}-{list_id}.csv, where kind is ip, net, ip6 or bl"
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" },
+                "example": "185.220.101.4,2,0\n185.220.101.5,2,1893456000\n"
+              }
+            }
+          },
+          "400": {
+            "description": "Error (JSON). Codes: scope, bad-gang, bad-user, no-list, bad-list.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    }
+  }
+}
