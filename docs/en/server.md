@@ -9,7 +9,6 @@ You can use any VPS on any virtualization system. System requirements depend on 
 
 **Recommended OS:** Debian 11
 
-::: card
 <a id="inferno"></a>
 ## Inferno
 
@@ -23,7 +22,6 @@ This is the best provider in terms of price, quality and reasonableness. A very 
 I don't remember anything from the minuses at all. Recommended, definitely!
 
 [Go and buy it](https://cp.inferno.name/aff.php?aff=3858)
-:::
 
 We have been working with Inferno for a long time in various projects. Impressions are only positive. But I recommend to warn the support that there may be complaints about you. Like this:
 
@@ -31,7 +29,6 @@ We have been working with Inferno for a long time in various projects. Impressio
 
 Most likely, you will immediately outline a plan of action and advise how to organize everything.
 
-::: card
 <a id="hetzner"></a>
 ## Hetzner
 
@@ -42,9 +39,7 @@ Perfert provider for workng white and shiny and more or less bright verticals.
 **Cons**: required verification of identity with sending documents, totally zero bulletproofness.
 
 [Go and buy it](https://hetzner.cloud/?ref=H2e2ZCmU6L67)
-:::
 
-::: card
 <a id="bulletproof"></a>
 ## BulletProof
 
@@ -55,9 +50,7 @@ A bulletproof provider for maximum protection in pleasant locations.
 **Cons**: too fucking expensive, minimum $100 per server.
 
 [Go and buy it](https://bpw.sc/billing/aff.php?aff=131)
-:::
 
-::: card
 <a id="timeweb"></a>
 ## Timeweb
 
@@ -68,4 +61,3 @@ A good average player with uptime in the "how lucky" format and not the most ade
 **Cons**: when bullying, they first kill the server and only then go to deal with it.
 
 [Go and buy it](https://timeweb.com/ru/services/vds/?i=65773)
-:::

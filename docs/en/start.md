@@ -1,6 +1,5 @@
 # Working with sites
 
-::: card
 ### Section summary
 
 1. Go to "[My campaigns](/filter)", enter the domain in the green field "Domain", click **Add**.
@@ -10,7 +9,6 @@
 5. Click **"Save and download file"** and host the file.
 
 [Everything is clear, let's get to work!](/filter)
-:::
 
 <a id="site"></a>
 ## Adding a campaign
@@ -71,7 +69,6 @@ You can specify additional site settings that may not match our vision of perfec
 - **Pass traffic if URL contains** - white list of words in the request URL. Specified one word per line. If the request does not contain any of the words in this list, the traffic will be blocked.
 - **White list** - requests from the specified addresses will not be checked. It is indicated one address per line. You can specify both a single address (12.34.56.78) and a subnet with a numeric mask (12.34.56.0/24).
 
-::: card
 <a id="filter"></a>
 ## System black lists
 
@@ -83,4 +80,3 @@ There are a number of system filters available to you that you can use on your s
 For optimal protection of your site from spurious traffic, we recommend using all available filters, that is, do not configure the "Filters" field at all.
 
 [Read more about black lists](blacklist.md)
-:::

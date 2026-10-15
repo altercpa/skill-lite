@@ -2,7 +2,6 @@
 
 Your own site storage greatly expands the possibilities of working with the tracker. It opens access to the use of local sites and takes care of the whole routine of domain parking and tracking. The use of storage significantly reduces the likelihood of advertising campaigns being banned in some networks.
 
-::: card
 ## Site storage benefits
 
 1. Download ready-made archives of sites from affiliate networks with all customized logic.
@@ -11,7 +10,6 @@ Your own site storage greatly expands the possibilities of working with the trac
 4. Minimize the risk of blocking due to bad server neighbors.
 
 [Jump to setup](/track-sites)
-:::
 
 <a id="setup"></a>
 
@@ -30,7 +28,6 @@ The storage is installed and ready to go. Your sites will be located in the `/va
 
 After installing the storage, it is recommended to park some domain to it and specify it in the settings. It will be used to preview HTTPS sites instead of simply connecting by IP address.
 
-::: card
 <a id="sitesbreif"></a>
 
 ## Preparing websites briefly
@@ -51,7 +48,6 @@ The site will not work well by itself, it
 necessarily
 
 should be checked and prepared!
-:::
 
 <a id="sites"></a>
 

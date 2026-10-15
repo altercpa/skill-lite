@@ -2,7 +2,6 @@
 
 We provide ready-made blacklists of suspicious addresses and headers. You can create your own blacklists and use them in combination with the system ones or instead of them. Suspicious bots and requests with incomplete headers are always blocked at the system level.
 
-::: card
 <a id="filter"></a>
 ## System black lists
 
@@ -12,7 +11,6 @@ There are a number of system filters available to you that you can use on your s
 - **Smart** of types **IPv4**, **IPv6** and **Net** - smart blacklists, which are automatically generated in real time based on incoming traffic from all sites of the service.
 
 For optimal protection of your site from spurious traffic, we recommend using all available filters, that is, do not configure the "Filters" field at all.
-:::
 
 ## Personal blacklists
 

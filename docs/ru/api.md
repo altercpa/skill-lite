@@ -21,7 +21,6 @@ API фильтров и трекера позволяют работать с п
 
 Некоторые функции имеют отдельные адреса для командной работы. В них использовать параметр `scope` не требуется. В документации указаны образцы ссылок для разного уровня доступа, если они поддерживаются.
 
-::: card
 ## Фильтрация трафика
 
 1. [Проверка визита](api-filter.md#check)
@@ -34,9 +33,7 @@ API фильтров и трекера позволяют работать с п
 8. [Постбек мини-трекера](api-filter.md#filterpostback)
 9. [Журнал визитов](api-filter.md#filterlog)
 10. [Статистика визитов](api-filter.md#filterstats)
-:::
 
-::: card
 ## Чёрные списки
 
 1. [Доступные списки](api-blacklist.md#blacklistavail)
@@ -50,33 +47,25 @@ API фильтров и трекера позволяют работать с п
 9. [Изменение записи](api-blacklist.md#blacklistchange)
 10. [Импорт записей](api-blacklist.md#blacklistimport)
 11. [Экспорт записей](api-blacklist.md#blacklistexport)
-:::
 
-::: card
 ## Интеграция с трекером
 
 1. [Отправка постбека](api-tracker.md#postback)
 2. [Импорт расходов](api-tracker.md#spend)
 3. [Шаблоны постбеков](api-tracker.md#templates)
 4. [Источники трафика](api-tracker.md#networks)
-:::
 
-::: card
 ## Статистика трекера
 
 1. [Список лидов](api-stats.md#leads)
 2. [Статистика по кликам](api-stats.md#stats)
 3. [Список кликов](api-stats.md#clicks)
-:::
 
-::: card
 ## Click API — обработка переходов
 
 1. [Регистрация клика по коду потока](api-click.md#tds)
 2. [Регистрация клика по домену](api-click.md#domain)
-:::
 
-::: card
 ## Хранилище сайтов
 
 1. [Список сайтов](api-sites.md#siteslist)
@@ -84,9 +73,7 @@ API фильтров и трекера позволяют работать с п
 3. [Изменить сайт](api-sites.md#sitesedit)
 4. [Удалить сайт](api-sites.md#sitesdel)
 5. [Скачать сайт](api-sites.md#sitesdownload)
-:::
 
-::: card
 ## Паркованные домены
 
 1. [Список доменов](api-domains.md#domainslist)
@@ -98,9 +85,7 @@ API фильтров и трекера позволяют работать с п
 7. [Создать файл подтверждения](api-domains.md#domainsconfirm)
 8. [Изменить файл подтверждения](api-domains.md#domainschange)
 9. [Удалить файл подтверждения](api-domains.md#domainsremove)
-:::
 
-::: card
 ## Потоки и пути
 
 1. [Список потоков](api-flows.md#flowslist)
@@ -115,9 +100,7 @@ API фильтров и трекера позволяют работать с п
 10. [Копирование пути](api-flows.md#flowscopy)
 11. [Изменение настроек пути](api-flows.md#flowsedit)
 12. [Удаление пути](api-flows.md#flowsdel)
-:::
 
-::: card
 ## Коннекторы импорта расходов
 
 1. [Типы коннекторов](api-adv.md#advtypes)
@@ -129,4 +112,3 @@ API фильтров и трекера позволяют работать с п
 7. [Запустить проверку вне расписания](api-adv.md#advupdate)
 8. [Удалить интеграцию](api-adv.md#advdel)
 9. [Журнал запросов интеграции](api-adv.md#advlog)
-:::

@@ -2,7 +2,6 @@
 
 You can send postback requests to third-party services when leads change. This is useful for integrating with various ad networks and optimizing ads. Postbacks are configured within the flow.
 
-::: card
 <a id="auto"></a>
 
 ## Automatic setup by template
@@ -14,7 +13,6 @@ You don't have to fill in all the tags yourself. In the "Tags" section, click "C
 - **Pixel** or **Identifier** - the number of your counter or campaign, which is being optimized.
 
 After saving the form, all tags and postbacks will be substituted automatically. Just copy the new flow link and use it to fill the traffic.
-:::
 
 <a id="tags"></a>
 

@@ -2,7 +2,7 @@
 
 Flows allow you to perform smart split testing and create smart links. Views can be optimized using the multi-armed bandit algorithm. Split testing is built into any flow.
 
-::youtube[-NE4qJsGwc4]
+[Watch the video on YouTube](https://www.youtube.com/watch?v=-NE4qJsGwc4)
 
 ## Multiple ways
 

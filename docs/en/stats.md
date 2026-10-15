@@ -86,13 +86,11 @@ The analytics section is an alternative way to display click statistics. It allo
 
 Move the tags with the mouse in the order you need and click on the check mark. A hierarchical report will be built for the specified tag sequence. Click on the plus sign in the statistics line to expand it further. If a filter is specified for any of the tags, it will be skipped in the hierarchy.
 
-::: card
 ## Setting goals
 
 When working with statistics, you can enable goal support. Goals will allow you to further break down leads into groups and analyze the necessary indicators within these groups.
 
 [Learn more about goals](goal.md)
-:::
 
 ## Clicks log
 

@@ -2,7 +2,6 @@
 
 The tracker allows users to independently organize themselves into arbitration teams. Within a team, the leader has access to shared statistics for all participants and spend analytics for the entire team at once.
 
-::: card
 ## The true teamwork
 
 The tracker offers extremely limited tools for the work of an arbitration team. For serious team automation, we recommend using other products from our company - [AlterCPA Pro](https://www.altercpa.pro/en/altercpa) or [Cloud](https://www.altercpa.pro/en/cloud). They have a number of important advantages:
@@ -16,7 +15,6 @@ The tracker offers extremely limited tools for the work of an arbitration team. 
 Using [AlterCPA Pro](https://www.altercpa.pro/en/altercpa) or [Cloud](https://www.altercpa.pro/en/cloud) you can create your own small affiliate program just for your own arbitration team and automate all work with leads and traffic.
 
 [Choose your AlterCPA](https://www.altercpa.pro/ru/promo)
-:::
 
 ## How to join a team?
 

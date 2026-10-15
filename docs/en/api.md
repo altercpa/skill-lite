@@ -21,7 +21,6 @@ Most of the API can be run in either user, team, or administrator space. By defa
 
 Some functions have separate URLs for team work. Using the `scope` parameter is not required for these functions. The documentation provides sample URLs for different access levels, if supported.
 
-::: card
 ## Filtering
 
   1. [Check the visit](api-filter.md#check)
@@ -34,9 +33,7 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
   8. [Postback for mini-tracker](api-filter.md#filterpostback)
   9. [Visit log](api-filter.md#filterlog)
   10. [Visit statistics](api-filter.md#filterstats)
-:::
 
-::: card
 ## Blacklists
 
   1. [Available lists](api-blacklist.md#blacklistavail)
@@ -50,33 +47,25 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
   9. [Change an entry](api-blacklist.md#blacklistchange)
   10. [Import entries](api-blacklist.md#blacklistimport)
   11. [Export entries](api-blacklist.md#blacklistexport)
-:::
 
-::: card
 ## Integration with tracker
 
   1. [Sending postback](api-tracker.md#postback)
   2. [Import spend statistics](api-tracker.md#spend)
   3. [Postback templates](api-tracker.md#templates)
   4. [Traffic sources](api-tracker.md#networks)
-:::
 
-::: card
 ## Tracker statistics
 
   1. [Leads list](api-stats.md#leads)
   2. [Click statistics](api-stats.md#stats)
   3. [Click list](api-stats.md#clicks)
-:::
 
-::: card
 ## Click API — click processing
 
 1. [Register a click by flow code](api-click.md#tds)
 2. [Register a click by domain](api-click.md#domain)
-:::
 
-::: card
 ## Site Storage
 
 1. [Sites list](api-sites.md#siteslist)
@@ -84,9 +73,7 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 3. [Edit site](api-sites.md#sitesedit)
 4. [Delete site](api-sites.md#sitesdel)
 5. [Download site](api-sites.md#sitesdownload)
-:::
 
-::: card
 ## Parked Domains
 
 1. [Domains list](api-domains.md#domainslist)
@@ -98,9 +85,7 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 7. [Create confirmation file](api-domains.md#domainsconfirm)
 8. [Change confirmation file](api-domains.md#domainschange)
 9. [Remove confirmation file](api-domains.md#domainsremove)
-:::
 
-::: card
 ## Flows and Ways
 
 1. [Flow list](api-flows.md#flowslist)
@@ -115,9 +100,7 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 10. [Copy way](api-flows.md#flowscopy)
 11. [Edit way settings](api-flows.md#flowsedit)
 12. [Delete way](api-flows.md#flowsdel)
-:::
 
-::: card
 ## Ad Spend Connectors
 
 1. [Connector types](api-adv.md#advtypes)
@@ -129,4 +112,3 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 7. [Force integration run](api-adv.md#advupdate)
 8. [Delete integration](api-adv.md#advdel)
 9. [Integration request log](api-adv.md#advlog)
-:::

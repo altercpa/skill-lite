@@ -4,7 +4,6 @@ The easiest and most convenient method for installing a filter on a website is t
 
 ![Download the filtering file for the site](assets/img/en-download.png)
 
-::: card
 ## What are target and dummy sites?
 
 Target and dummy sites can be presented as file, domain or URL.
@@ -13,7 +12,6 @@ Target and dummy sites can be presented as file, domain or URL.
 - **Dummy site** also known as "white" site - it is a resource that cybercriminals and bots see instead of the target site. This could be a fake site, an error page, a third-party resource, or a honeypot.
 
 When working with URL, be sure to specify the full link with `https://` at the beginning. When working with a file, do not specify a link to it, specify the relative path to the file.
-:::
 
 <a id="methods"></a>
 
