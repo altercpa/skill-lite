@@ -202,7 +202,7 @@ POST /postbacks/{flow_key}
 
 The `/postbacks/{flow_key}` route decodes the key: positive value = user postback, negative = gang postback. The `{flow_key}` is the value from `flow.postback.*` URL templates.
 
-**Method:** GET or POST. Both are merged; POST wins for the primary fields, GET wins for the tag-like fields.
+**Method:** GET or POST (parameters are merged; POST wins).
 
 **Required fields (at least one identification combo):**
 

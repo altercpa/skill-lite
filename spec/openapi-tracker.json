@@ -1340,7 +1340,7 @@
         "tags": [
           "Tracker Integration"
         ],
-        "description": "Creates a new lead or updates an existing one matched by click code, subid+flow, or uid+flow. Triggers postback fan-out to per-event URLs configured on the flow.\n\nParameter merge: primary fields use POST-then-GET priority; tag fields use a GET-wins override — intentional asymmetry.\n\nError codes by HTTP status: 400 no-changes; 403 access; 404 no-click, bad-click, bad-flow; 500 db.",
+        "description": "Creates a new lead or updates an existing one matched by click code, subid+flow, or uid+flow. Triggers postback fan-out to per-event URLs configured on the flow.\n\nParameters may be sent via GET or POST (POST overrides GET).\n\nError codes by HTTP status: 400 no-changes; 403 access; 404 no-click, bad-click, bad-flow; 500 db.",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
