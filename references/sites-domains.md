@@ -191,11 +191,11 @@ Content-Disposition: attachment; filename=site.zip
 
 ## Parked Domains
 
-The `domains` app manages parked domains for flows: listing, adding, manual status checks, deletion, attaching a domain to a flow, and managing per-domain confirmation files served at the domain root.
+The `domains` app manages parked domains for flows: listing, adding, manual status checks, deletion, attaching a domain to a flow, managing per-domain confirmation files served at the domain root, and getting the parking IPs and DNS records to point a domain at.
 
 Base URL: `api/domains/{func}.json?id={token}[&scope=...]`
 
-**Billing:** `domains/list` and `domains/add` require the caller's plan to allow it (except `scope=admin`) — otherwise `unpaid`. `check`/`del`/`glue` do not check billing at all (only the ownership check). The four confirmation-file functions (`files`/`confirm`/`change`/`remove`) also do **not** check billing.
+**Billing:** `domains/list` and `domains/add` require the caller's plan to allow it (except `scope=admin`) — otherwise `unpaid`. `check`/`del`/`glue` do not check billing at all (only the ownership check). The four confirmation-file functions (`files`/`confirm`/`change`/`remove`) and `dns` also do **not** check billing.
 
 ### Domain Object (list/check responses)
 
@@ -583,6 +583,44 @@ Note: unlike `files`/`confirm`/`change`, the response has **no `data` field for 
 **Side effects:** Deletes exactly one file; does not touch the domain or its flow attachment, and does not affect the domain's other files. Unlike `domains/del` (which cascades to all files of a domain), `remove` is single-file.
 
 **Note:** No billing check.
+
+---
+
+### domains/dns — Parking IPs and DNS records
+
+```
+GET api/domains/dns.json?id={token}[&scope=gang|admin][&user={user_id}]
+```
+
+Returns the parking IP addresses and the ready DNS records to create at the registrar so that a domain points to the tracker. Read-only: no domain is added or changed; no billing check.
+
+The addresses depend on the parking setup of the user: a user who belongs to a team gets the addresses of the team setup.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `scope` | string | no | `user` (default), `gang`/`team`, `admin`/`sys`. `gang`: the setup of the caller's own account is used; a `user` that is given must be a member of your team (else `scope`) and does not change the result. |
+| `user` | int | for `scope=admin` | User whose parking addresses are returned. Without it `scope=admin` answers `no-user`. |
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "data": {
+    "ips": ["203.0.113.10", "2001:db8::10"],
+    "records": [
+      { "name": "@", "type": "A", "value": "203.0.113.10" },
+      { "name": "@", "type": "AAAA", "value": "2001:db8::10" }
+    ]
+  }
+}
+```
+
+- `ips` — list of parking IP addresses (IPv4 and IPv6) as strings; `[]` when none.
+- `records` — DNS records to create; `[]` when there are no addresses. Each record is `{name, type, value}`: `name` is always `@` (domain root), `type` is `A` (IPv4) or `AAAA` (IPv6). At most one `A` and one `AAAA` record are returned; when the setup holds several addresses a random one is picked on every call.
+
+**Errors:** `scope` (workspace not available: not a team leader, not an administrator, the account is blocked, or with `scope=gang` a `user` who is not a member of your team; HTTP 400), `no-user` (`scope=admin` without `user`; HTTP 400).
 
 ---
 

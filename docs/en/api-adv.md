@@ -31,7 +31,7 @@ The function returns an associative array:
 
 Error codes:
 
-- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights).
+- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights, or, for `scope=gang`, a `user` parameter that is not a member of your team).
 
 The `data` dictionary maps each connector type code to its localized name; entries are ordered alphabetically by the localized name, not by code. Available type codes:
 
@@ -181,7 +181,7 @@ The function returns an associative array:
 
 Error codes:
 
-- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights).
+- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights, or, for `scope=gang`, a `user` parameter that is not a member of your team).
 
 Fields of a record in `data`:
 
@@ -288,6 +288,7 @@ Fields of `data`:
 | `field` | Which click field carries the ad/creative ID for matching (see [spend-matching tag labels](#advtags)). |
 | `meta` | Connector-specific settings, decoded (an object, not a raw JSON string). |
 | `fields` | Connector-specific field descriptors for rendering extra settings (see below); an empty array for connectors with no extra settings. |
+| `desc` | Setup instructions for the connector type in your interface language (where to get the credentials, recommended period and frequency); may contain simple HTML such as links. An empty string if the connector has no description. |
 
 All 6 standard credential fields (`url`, `login`, `pass`, `user`, `api`, `key`) are always present in the response regardless of which ones the connector actually uses — consult `dataset.auths` to know which are meaningful for the integration's connector type.
 
@@ -362,7 +363,8 @@ For the `bigo` connector, the OAuth access token, its expiry, and — if BIGO ro
             { "type": "select", "name": "facebook_mode", "head": "Contains", "value": 0, "options": [ "ID of ad", "ID of adset", "ID of campaign" ] },
             { "type": "text", "name": "facebook_proxy", "head": "Proxy for requests", "descr": "Protocol, IP address and port, e.g.: socks5://1.2.3.4:56", "value": "" },
             { "type": "text", "name": "facebook_pauth", "head": "Proxy authorization", "descr": "Login and password separated by a colon, e.g.: user:pass", "value": "" }
-        ]
+        ],
+        "desc": "To integrate with Facebook directly, provide your API token. Register on developers.facebook.com, create an application like Other - Business. ..."
     },
     "dataset": {
         "auths": [ "api" ],
@@ -504,7 +506,7 @@ Error codes:
 - `access` — the integration is not owned under the resolved scope.
 - `db` — database error while saving changes.
 
-Fields of `data`: same as `data` in [get integration edit form](#advform), except that it never includes the `fields` key (a refreshed connector field descriptor list is not echoed back after a settings update — call [get integration edit form](#advform) again to obtain it).
+Fields of `data`: same as `data` in [get integration edit form](#advform), except that it never includes the `fields` and `desc` keys (a refreshed connector field descriptor list is not echoed back after a settings update — call [get integration edit form](#advform) again to obtain it).
 
 **Example of a successful server response:**
 

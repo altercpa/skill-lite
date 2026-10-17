@@ -45,7 +45,7 @@
             "all"
           ]
         },
-        "description": "Access scope. Must be in GET query string even when body is JSON. Default: user. Ownership is strictly binary (owned by a user XOR by a team) — gang scope's optional user= sub-filter is not consulted by this app."
+        "description": "Access scope. Must be in GET query string even when body is JSON. Default: user. Ownership is strictly binary (owned by a user XOR by a team) — gang scope's optional user= does not narrow anything in this app, but a user who is not a member of your team is refused with the scope error."
       },
       "AdvId": {
         "name": "adv",
@@ -471,6 +471,10 @@
                   "$ref": "#/components/schemas/ConnectorField"
                 },
                 "description": "Connector-specific field descriptors. Empty for connectors with no extra settings."
+              },
+              "desc": {
+                "type": "string",
+                "description": "Setup instructions of the connector type in the caller's interface language (where to get the credentials, recommended period and frequency). May contain simple HTML such as links. Empty string when the type has no description. Returned by form only."
               }
             }
           }
@@ -778,7 +782,7 @@
         "tags": [
           "Adv"
         ],
-        "description": "Returns every stored field plus the connector's own extra field descriptors and all reference data (dataset) needed to render a complete edit form in one call. Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found.",
+        "description": "Returns every stored field plus the connector's own extra field descriptors all reference data (dataset) needed to render a complete edit form in one call, and the connector type's setup instructions (desc). Error codes by HTTP status: 400 scope; 403 access; 404 no-id, not-found.",
         "parameters": [
           {
             "$ref": "#/components/parameters/Scope"

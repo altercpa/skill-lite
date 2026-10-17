@@ -18,9 +18,10 @@ there is no `unpaid` error anywhere in this app.
 
 Ownership is strictly binary (owned by a user **XOR** owned by a team) — there is no
 per-member team visibility marker (`glue`) like `sites`/`domains` have. A team-owned
-integration has no personal owner. The `?user=` sub-filter that `scope=gang`
-otherwise accepts (to select one team member) is **not consulted** anywhere in `adv` —
-an integration is either wholly personal or wholly the team's.
+integration has no personal owner. The `?user=` parameter that `scope=gang`
+otherwise accepts (to select one team member) does **not** narrow anything in `adv` —
+an integration is either wholly personal or wholly the team's. It is still checked: a `user`
+who is not a member of your team answers `scope`.
 
 | Scope | List/log filter | Single-row ownership check |
 |---|---|---|
@@ -296,7 +297,8 @@ integration plus the connector's own extra field descriptors and all reference d
       { "type": "select", "name": "facebook_mode", "head": "Contains", "value": 0, "options": ["ID of ad", "ID of adset", "ID of campaign"] },
       { "type": "text", "name": "facebook_proxy", "head": "Proxy for requests", "descr": "...", "value": "" },
       { "type": "text", "name": "facebook_pauth", "head": "Proxy authorization", "descr": "...", "value": "" }
-    ]
+    ],
+    "desc": "To integrate with Facebook directly, provide your API token. Register on developers.facebook.com, ..."
   },
   "dataset": {
     "auths": ["api"],
@@ -308,7 +310,9 @@ integration plus the connector's own extra field descriptors and all reference d
 ```
 
 `data` = the Integration Object plus `fields` (the connector's own field descriptors,
-`[]` for connectors with no extra settings). `dataset.auths` lists which of the six
+`[]` for connectors with no extra settings) and `desc` (the connector type's setup instructions in the
+caller's interface language: where to get the credentials, recommended period and frequency; may contain
+simple HTML such as links; `""` when the type has no description). `dataset.auths` lists which of the six
 standard credential slots this connector's `type` actually uses; `dataset.tags`/
 `repeats`/`periods` are the same label lists documented above, provided inline so a
 client can render the whole form without a second call.
@@ -424,7 +428,7 @@ with the current, unchanged integration returned (not an error).
   }
 }
 ```
-Same shape as `adv/form`'s `data`, **minus** `fields` (call `adv/form` again for a
+Same shape as `adv/form`'s `data`, **minus** `fields` and `desc` (call `adv/form` again for a
 refreshed connector field list).
 
 **Errors:**
@@ -576,7 +580,7 @@ Ordered newest first.
 
 | Error | Meaning |
 |---|---|
-| `scope` | Invalid scope or insufficient permissions |
+| `scope` | Invalid scope or insufficient permissions (with `scope=gang`, also a `user` who is not a member of your team) |
 | `no-id` | Integration ID not provided |
 | `not-found` | Integration id does not exist (or, for `form`/`edit`, its connector type is no longer available) |
 | `access` | Integration not owned under the resolved scope |

@@ -1,6 +1,6 @@
 ---
 name: altercpa-lite-api
-description: Full API reference for AlterCPA Lite tracker. Use this skill whenever making API calls to the tracker, answering questions about tracker endpoints, building integrations, or writing code that interacts with the AlterCPA Lite API. Triggers on any mention of AlterCPA tracker API endpoints, postbacks, flows, domains, filter/cloaking, campaign copy, visit journal, statistics and journal clearing, blacklists (IP / network / header block-lists), click tracking, tracker statistics, ad-spend / click-cost export connectors (adv), advertising-network spend import (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin, FBtool, MixAdvert, AdPartner), or the hack APIs — Facebook Conversions API pixels (fbpix), TikTok Events API pixels (ttpix), Google Ads offline-conversion export (gclid), and Postback 2.0 outbound HTTP/Telegram postbacks (p2b).
+description: Full API reference for AlterCPA Lite tracker. Use this skill whenever making API calls to the tracker, answering questions about tracker endpoints, building integrations, or writing code that interacts with the AlterCPA Lite API. Triggers on any mention of AlterCPA tracker API endpoints, postbacks, flows, domains, filter/cloaking, campaign copy, visit journal, statistics and journal clearing, blacklists (IP / network / header block-lists), click tracking, tracker statistics, a single lead with its status history, API-request and outgoing-postback journals (logs), API key reset, ad-spend / click-cost export connectors (adv), advertising-network spend import (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin, FBtool, MixAdvert, AdPartner), or the hack APIs — Facebook Conversions API pixels (fbpix), TikTok Events API pixels (ttpix), Google Ads offline-conversion export (gclid), and Postback 2.0 outbound HTTP/Telegram postbacks (p2b).
 ---
 
 # AlterCPA Lite — API Reference
@@ -162,8 +162,9 @@ Read `references/tracker.md` for full spec.
 |---|---|---|
 | `api/tracker/postback.json` | `api/gangs/postback.json` | Receive lead postback |
 | `api/tracker/stats.json` | `api/gangs/stats.json` | Click + lead statistics (GET/POST, `show`/`page` pagination, `sort`/`order`) |
-| `api/tracker/leads.json` | `api/gangs/leads.json` | Leads list (GET/POST, `show`/`page` pagination, `sort`/`order`) |
-| `api/tracker/clicks.json` | `api/gangs/clicks.json` | Raw click list / traffic log (GET/POST, `show`/`page` pagination, `sort`/`order`; response key is `data`, not `leads`) |
+| `api/tracker/leads.json` | `api/gangs/leads.json` | Leads list (GET/POST, `show`/`page` pagination, `sort`/`order`; filters include `mobile`, `os`, `browser`, `hour`) |
+| `api/tracker/lead.json` | `api/gangs/lead.json` | One lead by `lead` ID with its status-change history (`changes`) |
+| `api/tracker/clicks.json` | `api/gangs/clicks.json` | Raw click list / traffic log (GET/POST, `show`/`page` pagination, `sort`/`order`, `hour` filter; response key is `data`, not `leads`) |
 | `api/tracker/spend.json` | `api/gangs/spend.json` | Import click spend |
 | `api/tracker/templates.json` | — | CPA-network postback templates (reference book) |
 | `api/tracker/networks.json` | — | Traffic-source presets (reference book) |
@@ -196,6 +197,7 @@ Read `references/sites-domains.md` for full spec.
 | `api/domains/confirm.json` | Create/replace a confirmation file (upsert) |
 | `api/domains/change.json` | Rename/rewrite a confirmation file |
 | `api/domains/remove.json` | Delete a confirmation file |
+| `api/domains/dns.json` | Parking IPs and the DNS records (`A`/`AAAA`) to point a domain at |
 
 ### Ad-Spend Connectors (adv)
 Read `references/adv.md` for full spec.
@@ -210,7 +212,7 @@ cost into the tracker. No billing gate. Ownership is strictly binary
 | `api/adv/types.json` | List connector types (type code → localized name) |
 | `api/adv/tags.json` | List spend-matching tag labels (the `field` selector) |
 | `api/adv/list.json` | Paginated list of configured integrations |
-| `api/adv/form.json` | Integration + connector field descriptors + dataset |
+| `api/adv/form.json` | Integration + connector field descriptors + dataset + setup text (`desc`) |
 | `api/adv/add.json` | Create integration shell (type + name only) |
 | `api/adv/edit.json` | Edit integration settings (partial; connector meta all-or-nothing) |
 | `api/adv/update.json` | Force an out-of-schedule CRON run |
@@ -222,14 +224,25 @@ Read `references/profile-sys.md` for full spec.
 
 | Endpoint | Auth required | Description |
 |---|---|---|
-| `api/profile/info.json` | Yes | Get profile data |
-| `api/profile/edit.json` | Yes | Edit profile |
+| `api/profile/info.json` | Yes | Get profile data (avatar URL, team card, contact fields, time zones) |
+| `api/profile/edit.json` | Yes | Edit profile (partial update: only the sent fields change) |
+| `api/profile/reset.json` | Yes | Issue a new API key (the old one stops working) |
 | `api/profile/login.json` | Session (no token) | Get current session user |
 | `api/profile/register.json` | No | Register new user |
 | `api/profile/recover.json` | No | Request password recovery email |
 | `api/sys/ping.json` | Yes | Liveness check |
 | `api/sys/users.json` | Yes (admin accounts only) | User list/search |
 | `api/sys/settings.json` | No | Tracker timezone |
+
+### Logs
+Read `references/logs.md` for full spec.
+
+Read-only journals, newest first, paginated by `show`/`page`, entries keyed by log ID. `scope` selects whose entries (own / team / admin).
+
+| Endpoint | Description |
+|---|---|
+| `api/logs/requests.json` | Journal of incoming API requests (any app/function), filter by `from`/`to`, `site`, `click`, `lead`, `flow`, `err` |
+| `api/logs/postbacks.json` | Journal of outgoing postbacks (URL, body, remote response, HTTP code, timer), filter by `from`/`to`, `lead`, `site`, `event`, `flow`, `click` |
 
 ### Hack APIs — Conversions & Postbacks
 Read `references/hacks.md` for the shared Foundation + all four modules.
@@ -254,17 +267,18 @@ partial edit, response shape). The entity id is passed in an **entity-named** pa
 | `references/filter.md` | Filter campaigns CRUD and copy, visit journal, statistics and journal clearing, `/fltr/` cloaking endpoint |
 | `references/blacklist.md` | Blacklists: lists and entries CRUD, emptying a list, import/export, header IDs |
 | `references/flows.md` | Flow and way CRUD, all parameters, caps |
-| `references/tracker.md` | Postback, stats, leads, clicks, spend, settings, click API (TDS) |
-| `references/sites-domains.md` | Sites storage, parked domains, domain confirmation files |
+| `references/tracker.md` | Postback, stats, leads, single lead, clicks, spend, settings, click API (TDS) |
+| `references/sites-domains.md` | Sites storage, parked domains, domain confirmation files, parking DNS records |
 | `references/adv.md` | Ad-spend connector catalogue, CRUD, scheduling, request log |
-| `references/profile-sys.md` | Profile management, system endpoints |
+| `references/profile-sys.md` | Profile management (info, partial edit, API key reset), system endpoints |
+| `references/logs.md` | API-request journal, outgoing-postback journal |
 | `references/hacks.md` | Hack APIs: fbpix, ttpix, gclid, p2b — shared Foundation + per-module fields |
 
 When writing code that calls the API, always read the relevant reference file first to get exact parameter names, types, and error codes.
 
 ## OpenAPI Specs
 
-Machine-readable OpenAPI 3.1.0 specs are in `spec/`. Twelve files, one per domain:
+Machine-readable OpenAPI 3.1.0 specs are in `spec/`. Thirteen files, one per domain:
 
 | File | Covers |
 |---|---|
@@ -276,6 +290,7 @@ Machine-readable OpenAPI 3.1.0 specs are in `spec/`. Twelve files, one per domai
 | `spec/openapi-domains.json` | `/api/domains/*` |
 | `spec/openapi-adv.json` | `/api/adv/*` — ad-spend export connectors |
 | `spec/openapi-profile-sys.json` | `/api/profile/*`, `/api/sys/*` |
+| `spec/openapi-logs.json` | `/api/logs/*` — API-request and outgoing-postback journals |
 | `spec/openapi-fbpix.json` | `/api/fbpix/*` — Facebook Conversions API pixels |
 | `spec/openapi-ttpix.json` | `/api/ttpix/*` — TikTok Events API pixels |
 | `spec/openapi-gclid.json` | `/api/gclid/*` — Google offline-conversion export |

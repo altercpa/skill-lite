@@ -58,8 +58,9 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 ## Tracker statistics
 
   1. [Leads list](api-stats.md#leads)
-  2. [Click statistics](api-stats.md#stats)
-  3. [Click list](api-stats.md#clicks)
+  2. [Lead details](api-stats.md#lead)
+  3. [Click statistics](api-stats.md#stats)
+  4. [Click list](api-stats.md#clicks)
 
 ## Click API — click processing
 
@@ -85,6 +86,7 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 7. [Create confirmation file](api-domains.md#domainsconfirm)
 8. [Change confirmation file](api-domains.md#domainschange)
 9. [Remove confirmation file](api-domains.md#domainsremove)
+10. [DNS records for a domain](api-domains.md#domainsdns)
 
 ## Flows and Ways
 
@@ -112,3 +114,8 @@ Some functions have separate URLs for team work. Using the `scope` parameter is 
 7. [Force integration run](api-adv.md#advupdate)
 8. [Delete integration](api-adv.md#advdel)
 9. [Integration request log](api-adv.md#advlog)
+
+## Logs
+
+1. [API requests log](api-logs.md#logsrequests)
+2. [Outgoing postbacks log](api-logs.md#logspostbacks)

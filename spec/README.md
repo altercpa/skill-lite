@@ -1,6 +1,6 @@
 # AlterCPA Lite — OpenAPI 3.1.0 Specifications
 
-Twelve self-contained OpenAPI 3.1.0 files, one per API domain.
+Thirteen self-contained OpenAPI 3.1.0 files, one per API domain.
 
 ## Files
 
@@ -9,11 +9,12 @@ Twelve self-contained OpenAPI 3.1.0 files, one per API domain.
 | `openapi-filter.json` | Filter campaigns (CRUD, copy), visit journal, statistics and journal clearing + /fltr/ cloaking runtime | 11 + 1 |
 | `openapi-blacklist.json` | Blacklists: lists and entries, emptying a list, CSV import/export | 12 |
 | `openapi-flows.json` | Flows and ways CRUD | 12 |
-| `openapi-tracker.json` | Postback (+ short-form `/postbacks/{key}`), stats, leads, clicks, spend, settings, templates, networks; gangs/* wrappers; click API (TDS) | 9 + 5 + 4 |
+| `openapi-tracker.json` | Postback (+ short-form `/postbacks/{key}`), stats, leads, single lead, clicks, spend, settings, templates, networks; gangs/* wrappers; click API (TDS) | 10 + 6 + 4 |
 | `openapi-sites.json` | Site storage | 5 |
-| `openapi-domains.json` | Parked domains + domain confirmation files | 9 |
+| `openapi-domains.json` | Parked domains + domain confirmation files + parking DNS records | 10 |
 | `openapi-adv.json` | adv — ad-spend export connectors (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin/Dolphin Cloud, FBtool, MixAdvert, AdPartner) | 9 |
-| `openapi-profile-sys.json` | User profile, registration, system | 8 |
+| `openapi-profile-sys.json` | User profile (info, partial edit, API key reset), registration, system | 9 |
+| `openapi-logs.json` | logs — API-request and outgoing-postback journals | 2 |
 | `openapi-fbpix.json` | fbpix — Facebook Conversions API (CAPI) pixels | 9 |
 | `openapi-ttpix.json` | ttpix — TikTok Events API pixels | 9 |
 | `openapi-gclid.json` | gclid — Google Ads / GA4 offline-conversion CSV export | 12 |

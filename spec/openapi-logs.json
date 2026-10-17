@@ -1,0 +1,797 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlterCPA Lite — Logs API",
+    "version": "1.0.0",
+    "description": "Read-only access to two journals of the tracker: logs/requests (incoming API requests of any app and function) and logs/postbacks (outgoing postbacks sent to external URLs when a lead changed status). Entries are returned newest first, paginated by show/page, as an object keyed by the entry ID. There is no billing gate.\n\nscope selects whose entries are returned: user (default) — the caller's own; gang/team (team leads only) — all members of the caller's team, user= narrows to one member; admin/sys (admin accounts) — user= selects one user, gang= all members of one team, neither — every user.\n\nA request is in the requests journal only if request logging is enabled on the tracker; sys/ping is never logged.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 403 access/ban, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+  },
+  "servers": [
+    {
+      "url": "https://{tracker}",
+      "variables": {
+        "tracker": {
+          "default": "example.com"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ApiToken": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Logs",
+      "description": "Journals of incoming API requests and outgoing postbacks"
+    }
+  ],
+  "paths": {
+    "/api/logs/requests.json": {
+      "get": {
+        "operationId": "logsRequests",
+        "summary": "API requests journal",
+        "tags": [
+          "Logs"
+        ],
+        "description": "Returns the journal of incoming API requests: any application and any function, not only postbacks. For each request the journal keeps the parameters, the response, the result and the client data. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET), except scope, which is read from the query string only. The site, click, lead and flow filters match requests that carried these identifiers (postbacks); for other requests these fields are empty. Error codes by HTTP status: 400 scope (the requested workspace is not available: not a team leader, not an administrator, the account is blocked, or with scope=gang the user parameter names someone who is not a member of your team).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date YYYY-MM-DD, from 00:00:00 inclusive"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date YYYY-MM-DD, until 23:59:59 inclusive"
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric site ID"
+          },
+          {
+            "name": "click",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Character click ID (or a numeric click ID)"
+          },
+          {
+            "name": "lead",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric lead ID"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Character flow ID (or a numeric flow ID)"
+          },
+          {
+            "name": "err",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "-1 = only requests without an error; -2 = only requests with any error; any other value = exactly this error code (e.g. access)"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/Show"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of the requests journal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "total",
+                    "page",
+                    "show",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total number of entries matching the filters"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Current page number"
+                    },
+                    "show": {
+                      "type": "integer",
+                      "description": "Entries per page"
+                    },
+                    "data": {
+                      "type": [
+                        "object",
+                        "array"
+                      ],
+                      "description": "Entries of the page keyed by entry ID, newest first; an empty list when nothing is found",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/RequestEntry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/logs/postbacks.json": {
+      "get": {
+        "operationId": "logsPostbacks",
+        "summary": "Outgoing postbacks journal",
+        "tags": [
+          "Logs"
+        ],
+        "description": "Returns the journal of outgoing postbacks: requests the tracker sent to external addresses when the status of a lead changed. For each postback the journal keeps the address, the request body, the response of the remote server and the request time. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET), except scope, which is read from the query string only. An unrecognised flow or click value is ignored. Error codes by HTTP status: 400 scope (the requested workspace is not available: not a team leader, not an administrator, the account is blocked, or with scope=gang the user parameter names someone who is not a member of your team).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/User"
+          },
+          {
+            "$ref": "#/components/parameters/Gang"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date YYYY-MM-DD, from 00:00:00 inclusive"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date YYYY-MM-DD, until 23:59:59 inclusive"
+          },
+          {
+            "name": "lead",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric lead ID"
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric site ID"
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            },
+            "description": "Postback event: 1 Global, 2 New, 3 Hold, 4 Approve, 5 Cancel, 6 Trash"
+          },
+          {
+            "name": "flow",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Character flow ID"
+          },
+          {
+            "name": "click",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Character click ID"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/Show"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of the postbacks journal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "total",
+                    "page",
+                    "show",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total number of entries matching the filters"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Current page number"
+                    },
+                    "show": {
+                      "type": "integer",
+                      "description": "Entries per page"
+                    },
+                    "data": {
+                      "type": [
+                        "object",
+                        "array"
+                      ],
+                      "description": "Entries of the page keyed by entry ID, newest first; an empty list when nothing is found",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/PostbackEntry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "id",
+        "description": "Format: {user_id}-{api_key}"
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ]
+        },
+        "description": "Whose entries: user (default), gang/team (team leads only), admin/sys (admin accounts). Must be in the GET query string even when the body is JSON."
+      },
+      "User": {
+        "name": "user",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        },
+        "description": "scope=gang: team member ID to narrow to; scope=admin: user ID"
+      },
+      "Gang": {
+        "name": "gang",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        },
+        "description": "scope=admin: team ID — entries of all members of the team (ignored when user is set)"
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "description": "1-based page number"
+      },
+      "Show": {
+        "name": "show",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 30
+        },
+        "description": "Entries per page (values outside 1-1000 are clamped)"
+      }
+    },
+    "headers": {
+      "XApiStatus": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "description": "Result status repeated from the body"
+      },
+      "XApiError": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "Error code repeated from the body"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Function-level error (HTTP 400): scope (the requested workspace is not available: not a team leader, not an administrator, the account is blocked, or with scope=gang the user parameter names someone who is not a member of your team); any error code not listed for another status.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "scope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Error key (API key missing or wrong) or auth.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "key"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Error ban (user banned or inactive).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "ban"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error app, func or db.",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "func"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "RequestEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Entry ID"
+          },
+          "user": {
+            "type": "integer",
+            "description": "ID of the user the request was made as"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Request time, Unix timestamp"
+          },
+          "app": {
+            "type": "string",
+            "description": "Called application"
+          },
+          "func": {
+            "type": "string",
+            "description": "Called function"
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "true if the response contained no error"
+          },
+          "error": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Error code of the response, false if none"
+          },
+          "get": {
+            "type": "object",
+            "description": "GET parameters of the request"
+          },
+          "post": {
+            "type": [
+              "object",
+              "array"
+            ],
+            "description": "POST parameters of the request; an empty list if none"
+          },
+          "files": {
+            "type": [
+              "object",
+              "array"
+            ],
+            "description": "Information about the uploaded files; an empty list if none"
+          },
+          "result": {
+            "description": "Response to the request"
+          },
+          "stage": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Lead stage from the response of a postback request, false if the response has none"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Client IP address, false if unknown"
+          },
+          "geo": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Two-letter country code of the client, false if unknown"
+          },
+          "ua": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Client User Agent, false if unknown"
+          },
+          "os": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Client operating system name, false if unknown"
+          },
+          "browser": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Client browser name, false if unknown"
+          },
+          "site": {
+            "type": "integer",
+            "description": "Site ID, 0 if the request had none"
+          },
+          "click": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character click ID, false if the request had none"
+          },
+          "lead": {
+            "type": "integer",
+            "description": "Lead ID, 0 if the request had none"
+          },
+          "flow": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character flow ID, false if the request had none"
+          }
+        },
+        "example": {
+          "id": 1042,
+          "user": 13,
+          "time": 1760698500,
+          "app": "tracker",
+          "func": "postback",
+          "ok": true,
+          "error": false,
+          "get": {
+            "click": "ca1337",
+            "status": "approve"
+          },
+          "post": [],
+          "files": [],
+          "result": {
+            "status": "ok",
+            "stage": "approve"
+          },
+          "stage": "approve",
+          "ip": "203.0.113.7",
+          "geo": "de",
+          "ua": "Mozilla/5.0 (X11; Linux x86_64) ... Chrome/130.0 Safari/537.36",
+          "os": "Linux",
+          "browser": "Chrome",
+          "site": 0,
+          "click": "ca1337",
+          "lead": 77,
+          "flow": "ef1c"
+        }
+      },
+      "PostbackEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Entry ID"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner of the lead"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Time the postback was sent, Unix timestamp"
+          },
+          "flow": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character flow ID, false if none"
+          },
+          "click": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character click ID, false if none"
+          },
+          "lead": {
+            "type": "integer",
+            "description": "Lead ID"
+          },
+          "site": {
+            "type": "integer",
+            "description": "Site ID"
+          },
+          "event": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "description": "Postback event: 1 Global, 2 New, 3 Hold, 4 Approve, 5 Cancel, 6 Trash"
+          },
+          "eventname": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Event name in the caller's interface language, false if unknown"
+          },
+          "url": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Address the postback was sent to"
+          },
+          "post": {
+            "type": [
+              "string",
+              "object",
+              "boolean"
+            ],
+            "description": "Request body as it was sent, false for a request without a body"
+          },
+          "header": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Additional request headers, one per line; false if none"
+          },
+          "result": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "description": "Response of the remote server"
+          },
+          "code": {
+            "type": "integer",
+            "description": "HTTP status of the remote response; 0 if there was no response"
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "true if code is from 200 to 399"
+          },
+          "timer": {
+            "type": "number",
+            "description": "Request duration in seconds"
+          },
+          "json": {
+            "type": "boolean",
+            "description": "true if the request body was sent as JSON"
+          }
+        },
+        "example": {
+          "id": 518,
+          "user": 13,
+          "time": 1760698510,
+          "flow": "ef1c",
+          "click": "ca1337",
+          "lead": 77,
+          "site": 0,
+          "event": 4,
+          "eventname": "Approve",
+          "url": "https://example.com/pb?click=ca1337&status=approve",
+          "post": false,
+          "header": false,
+          "result": "OK",
+          "code": 200,
+          "ok": true,
+          "timer": 0.412,
+          "json": false
+        }
+      }
+    }
+  }
+}

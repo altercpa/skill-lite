@@ -3,7 +3,7 @@
   "info": {
     "title": "AlterCPA Lite — Profile & System API",
     "version": "1.0.0",
-    "description": "User account management (profile/*) and system introspection (sys/*).\n\nAuth split: profile/info and profile/edit require API token. profile/login, profile/register, profile/recover do NOT require a token. sys/ping and sys/users require a token (sys/users: admin accounts only); sys/settings does not.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+    "description": "User account management (profile/*) and system introspection (sys/*).\n\nAuth split: profile/info, profile/edit and profile/reset require API token. profile/login, profile/register, profile/recover do NOT require a token. sys/ping and sys/users require a token (sys/users: admin accounts only); sys/settings does not.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
   },
   "servers": [
     {
@@ -49,7 +49,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "Function-level error (HTTP 400): bad-auth, disabled, email-exist, short-pass, short-name, required, no-email, bad-email, info, save; any error code not listed for another status.",
+        "description": "Function-level error (HTTP 400): bad-auth, disabled, email-exist, short-pass, short-name, required, no-email, bad-email, info, bad-tz, save; any error code not listed for another status.",
         "headers": {
           "X-API-Status": {
             "$ref": "#/components/headers/XApiStatus"
@@ -157,6 +157,28 @@
             }
           }
         }
+      },
+      "NotFound": {
+        "description": "Error bad-id (the user does not exist: edit, reset).",
+        "headers": {
+          "X-API-Status": {
+            "$ref": "#/components/headers/XApiStatus"
+          },
+          "X-API-Error": {
+            "$ref": "#/components/headers/XApiError"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "status": "error",
+              "error": "bad-id"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -216,6 +238,13 @@
               "boolean"
             ],
             "description": "Language code, or false"
+          },
+          "avatar": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Absolute URL of the 100x100 avatar when the user uploaded one, otherwise false (no default-avatar URL is returned)"
           }
         }
       },
@@ -266,6 +295,105 @@
               }
             },
             "additionalProperties": true
+          },
+          "gang": {
+            "$ref": "#/components/schemas/UserGang"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactField"
+            }
+          },
+          "tz": {
+            "$ref": "#/components/schemas/UserTimezones"
+          }
+        }
+      },
+      "UserGang": {
+        "type": "object",
+        "description": "The team card of the user. id is 0 (and name/admin/boss are false) when the user has no team.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Team ID, 0 if none"
+          },
+          "name": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Team name or false"
+          },
+          "admin": {
+            "type": "boolean",
+            "description": "The user is a team admin; false without a team"
+          },
+          "boss": {
+            "type": "boolean",
+            "description": "The user is the team owner (its creator); false without a team"
+          },
+          "make": {
+            "type": "boolean",
+            "description": "false when team creation is disabled on this tracker"
+          }
+        }
+      },
+      "ContactField": {
+        "type": "object",
+        "description": "A contact field configured on this tracker. Its code is the key inside meta and the parameter name accepted by profile/edit.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Field label in the caller's language"
+          },
+          "icon": {
+            "type": "string",
+            "description": "Icon name"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "description": "0 = simple value, 1 = social profile, 2 = URL link, 3 = value with label"
+          },
+          "url": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Link template where %s stands for the stored value, false when the field is not a link"
+          },
+          "reg": {
+            "type": "boolean",
+            "description": "The field is required at registration"
+          }
+        }
+      },
+      "UserTimezones": {
+        "type": "object",
+        "properties": {
+          "site": {
+            "type": "string",
+            "description": "The tracker time zone (always a valid identifier)"
+          },
+          "user": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "The user's personal time zone, or false"
+          },
+          "utz": {
+            "type": "boolean",
+            "description": "Personal time zones are enabled on this tracker (only then profile/edit saves tz)"
           }
         }
       }
@@ -402,7 +530,7 @@
         "tags": [
           "Profile"
         ],
-        "description": "Returns full profile for the authenticated user. Admin can use uu= to read another user's profile (non-existent user returns zeros silently, no error).",
+        "description": "Returns the profile of the authenticated user: access flags, registration data, avatar URL, the team card, the contact fields configured on this tracker and the time-zone block. Admin can use uu= to read another user's profile (non-existent user returns zeros silently, no error).",
         "parameters": [
           {
             "name": "uu",
@@ -435,13 +563,37 @@
                   },
                   "info": {
                     "reg": 1690000000,
-                    "tz": "Europe/Moscow",
-                    "lang": "en"
+                    "tz": "Europe/Berlin",
+                    "lang": "en",
+                    "avatar": "https://tracker.example.com/data/avatar/13.jpg"
                   },
                   "meta": {
                     "lang": "en",
                     "skin": "default",
-                    "avatar": false
+                    "avatar": true,
+                    "telegram": "john"
+                  },
+                  "gang": {
+                    "id": 3,
+                    "name": "Meow team",
+                    "admin": true,
+                    "boss": false,
+                    "make": true
+                  },
+                  "contacts": [
+                    {
+                      "code": "telegram",
+                      "name": "Telegram",
+                      "icon": "telegram",
+                      "type": 1,
+                      "url": "https://t.me/%s",
+                      "reg": false
+                    }
+                  ],
+                  "tz": {
+                    "site": "Europe/Moscow",
+                    "user": "Europe/Berlin",
+                    "utz": true
                   }
                 }
               }
@@ -468,32 +620,29 @@
     "/api/profile/edit.json": {
       "post": {
         "operationId": "profileEdit",
-        "summary": "Edit profile",
+        "summary": "Edit profile (partial update)",
         "tags": [
           "Profile"
         ],
-        "description": "Updates profile fields. POST wins over GET.\n\nWARNING: lang and skin are ALWAYS overwritten even if not provided — omitting them resets to empty string.\n\nFor avatar upload, use multipart/form-data.\n\nDuplicate email is silently ignored (no error, no update).\n\nAvatar upload failures are silently ignored.\n\nError codes by HTTP status: 400 info (name missing), save (update failed).",
+        "description": "Partial update: only the parameters that are sent are changed, everything omitted stays as it is. POST wins over GET.\n\nThe request body may be multipart/form-data, form-urlencoded or JSON; for avatar upload use multipart/form-data.\n\nA duplicate or invalid email and a pass without a matching conf are silently ignored (no error, no update).\n\ntz is considered only when personal time zones are enabled (tz.utz in profile/info), otherwise silently ignored; an empty string clears the personal time zone.\n\nContact fields: send any contact code from profile/info (contacts[].code) as a parameter; an empty value clears the field.\n\nAvatar upload failures are silently ignored. The password hash is never returned.\n\nThe response lists the accepted fields that were sent, each with the value now stored, even when the value is unchanged; only email is compared with the current address. A new password is saved but not echoed, so a password-only request returns empty data and meta. Nothing is saved when nothing valid was sent.\n\nError codes by HTTP status: 400 info (name sent but empty), bad-tz (unknown time-zone identifier), save (update failed); 404 bad-id (user not found).",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "name"
-                ],
                 "properties": {
                   "name": {
                     "type": "string",
-                    "description": "Display name (required)"
+                    "description": "Display name. If sent, it must not be empty."
                   },
                   "email": {
                     "type": "string",
                     "format": "email",
-                    "description": "New email (must be unique; duplicate silently ignored)"
+                    "description": "New email (must be unique; a duplicate or invalid value is silently ignored)"
                   },
                   "pass": {
                     "type": "string",
-                    "description": "New password"
+                    "description": "New password, applied only together with a matching conf"
                   },
                   "conf": {
                     "type": "string",
@@ -501,15 +650,15 @@
                   },
                   "tz": {
                     "type": "string",
-                    "description": "Timezone (only saved if the tracker's per-user time zones setting is on)"
+                    "description": "Time-zone identifier; an empty string clears the personal zone. Considered only when personal time zones are enabled."
                   },
                   "lang": {
                     "type": "string",
-                    "description": "Language code. ALWAYS overwrites — omit to reset."
+                    "description": "Language code (changed only when sent)"
                   },
                   "skin": {
                     "type": "string",
-                    "description": "Skin code. ALWAYS overwrites — omit to reset."
+                    "description": "Skin code (changed only when sent)"
                   },
                   "unavatar": {
                     "description": "Any truthy value clears the avatar"
@@ -519,15 +668,16 @@
                     "format": "binary",
                     "description": "Avatar image (jpg/jpeg/png/gif/webm/webp/svg/avif). Saved as 100×100 and 40×40 JPG."
                   }
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "description": "Contact field value: the parameter name is a contact code from profile/info (contacts[].code); an empty value clears the field."
                 }
               }
             },
             "application/x-www-form-urlencoded": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "name"
-                ],
                 "properties": {
                   "name": {
                     "type": "string"
@@ -551,7 +701,45 @@
                     "type": "string"
                   },
                   "unavatar": {}
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "description": "Contact field value: the parameter name is a contact code from profile/info (contacts[].code); an empty value clears the field."
                 }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "type": "string"
+                  },
+                  "conf": {
+                    "type": "string"
+                  },
+                  "tz": {
+                    "type": "string"
+                  },
+                  "lang": {
+                    "type": "string"
+                  },
+                  "skin": {
+                    "type": "string"
+                  },
+                  "unavatar": {}
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "description": "Contact field value: the parameter name is a contact code from profile/info (contacts[].code); an empty value clears the field."
+                },
+                "description": "Same fields as form-encoded; the avatar file cannot be sent in a JSON body."
               }
             }
           }
@@ -572,7 +760,7 @@
                     },
                     "data": {
                       "type": "object",
-                      "description": "Changed user-row fields only",
+                      "description": "User-row fields accepted from this request (name, tz, mail), each with the value now stored, even when it equals the old value; mail only when it is a new unused address. Empty when nothing valid was sent.",
                       "properties": {
                         "name": {
                           "type": "string"
@@ -582,16 +770,12 @@
                         },
                         "mail": {
                           "type": "string"
-                        },
-                        "pass": {
-                          "type": "string",
-                          "description": "Password HASH (not plaintext). Present only when password was changed."
                         }
                       }
                     },
                     "meta": {
                       "type": "object",
-                      "description": "Submitted meta patch (not the full merged result)",
+                      "description": "Meta keys accepted from this request (lang, skin, contact codes with false when cleared, avatar), each with the value now stored, even when unchanged. Empty when nothing valid was sent.",
                       "properties": {
                         "lang": {
                           "type": "string"
@@ -602,7 +786,8 @@
                         "avatar": {
                           "type": "boolean"
                         }
-                      }
+                      },
+                      "additionalProperties": true
                     }
                   }
                 }
@@ -620,6 +805,91 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profile/reset.json": {
+      "get": {
+        "operationId": "profileReset",
+        "summary": "Reset the API key",
+        "tags": [
+          "Profile"
+        ],
+        "description": "Generates a new API key for the account. The old key stops working immediately, so every later request must use the new token. Admin can use uu= to reset another user's key. Error codes by HTTP status: 400 save (update failed); 404 bad-id (user not found).",
+        "parameters": [
+          {
+            "name": "uu",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Admin only: target user ID override"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "id",
+                    "api",
+                    "token"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "id": {
+                      "type": "integer",
+                      "description": "User ID"
+                    },
+                    "api": {
+                      "type": "string",
+                      "description": "The new API key"
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "Ready-to-use value of the id request parameter: {id}-{api}"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "id": 13,
+                  "api": "9f1c2e7a4b6d4e0f8a3b5c7d9e1f2a4b",
+                  "token": "13-9f1c2e7a4b6d4e0f8a3b5c7d9e1f2a4b"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/ServerError"
@@ -1199,7 +1469,7 @@
   "tags": [
     {
       "name": "Profile",
-      "description": "User account management. info/edit require token; login/register/recover do not."
+      "description": "User account management. info/edit/reset require token; login/register/recover do not."
     },
     {
       "name": "System",

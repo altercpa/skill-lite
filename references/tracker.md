@@ -5,6 +5,7 @@
 2. tracker/postback — Receive lead postback
 3. tracker/stats — Click + lead statistics
 4. tracker/leads — Leads list
+4a. tracker/lead — One lead with its status changes
 5. tracker/clicks — Raw click list (traffic log)
 6. tracker/spend — Import click spend
 7. tracker/templates — CPA-network postback templates
@@ -385,7 +386,7 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 
 **Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body.
 
-**Pagination:** pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching leads. When `show` is absent/`0`, **all** matching leads are returned unpaginated (`show = -1`, hard-capped at 10000 rows) — use narrow date ranges or `show` to avoid hitting the cap on unbounded pulls.
+**Pagination:** pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching leads. When `show` is absent or below `1`, **all** matching leads are returned unpaginated (`show = -1`, hard-capped at 10000 rows) — use narrow date ranges or `show` to avoid hitting the cap on unbounded pulls.
 
 **Sorting:** applied by the database on both the paginated and unpaginated requests.
 
@@ -398,7 +399,7 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 
 | Name | Description |
 |---|---|
-| `from`/`to` | Filter by lead date (YYYY-MM-DD) |
+| `from`/`to` | Filter by lead date (YYYY-MM-DD, tracker time zone) |
 | `ufrom`/`uto` | Filter by lead time (UNIX timestamp) |
 | `geo` | Country code |
 | `ip` | IP address |
@@ -408,6 +409,10 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 | `c` | Numeric click ID |
 | `st` | Lead status: 1=new, 2=hold, 3=approve, 4=cancel, 5=trash |
 | `filter` | Filter step code |
+| `mobile` | Numeric device flag: `0` desktop, `1` mobile |
+| `os` | Numeric OS ID (same enumeration as the `os` response field below) |
+| `browser` | Numeric browser ID (same enumeration as the `browser` response field below) |
+| `hour` | Hour of the day of the lead, `0`–`23`, in the tracker time zone (the same as `from`/`to`) |
 | `gl` | Numeric goal ID |
 | `goal` | Symbolic goal code (e.g. `"main"`), resolved to the numeric goal ID of the user. If the code is unknown, the filter is silently ignored (no error). |
 | `click` | Symbolic click code |
@@ -417,7 +422,7 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 | `user` | Gang-only: restrict to team member |
 | `sort` | Column to sort by (see list above); unknown → lead ID. Absent → no ordering. |
 | `order` | Sort direction; only `asc` gives ascending. Default `desc`. |
-| `show` | Rows per page (enables paging; absent/`0` → all rows, capped at 10000) |
+| `show` | Rows per page, at most `1000` (a larger value is reduced to `1000`, and `1000` is echoed back); enables paging. Absent or below `1` → all rows, capped at 10000 |
 | `page` | 1-based page number (with `show`) |
 
 **Success response** (`page`/`show`/`total` always present; `total` = full number of matching leads when paginated, else the number of returned rows):
@@ -432,7 +437,7 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
       "flow": "ef1c", "way": 42, "site": 0,
       "siteurl": false,
       "filter": 0,
-      "status": "Approved",
+      "status": "approve",
       "custom": "approved",
       "goal": false,
       "price": 5.0, "currency": "usd",
@@ -453,9 +458,76 @@ Field notes:
 - `os` — numeric OS ID detected from the stored user-agent (same enumeration as the `os` filter above: `0`=Other, `1`=Windows, `2`=macOS, `3`=Linux, `4`=iOS, `5`=Android, `6`=WindowsMobile, `7`=Symbian, `8`=BlackBerry); `0` when no UA was stored on the lead.
 - `browser` — numeric browser ID detected from the stored user-agent (same enumeration as the `browser` filter above: `0`=Other, `1`=Chrome, `2`=Firefox, `3`=IE, `4`=Safari, `5`=Opera, `6`=Edge, `7`=Facebook, `8`=Instagram, `9`=TikTok, `10`=WebView, `11`=Bot); `0` when no UA was stored.
 
-**⚠ CRITICAL FOR INTEGRATORS:** The `status` field in each lead object is a **localized string** that depends on the tracker's UI language setting (e.g. `"Approved"` in EN, `"Одобрено"` in RU). **Do not parse it programmatically.** For machine-readable status, use the `st=` filter parameter (numeric 1–5) when querying leads, and derive status from the filter you used rather than from the response `status` field.
+**Note:** The `status` field in each lead object is the character status code — one of `new`, `hold`, `approve`, `cancel`, `trash`. The codes are not translated, so the value can be parsed programmatically; it is the same set the `status` filter accepts (the numeric form 1–5 is used by the `st` filter).
 
 **Errors:** `payment-required`
+
+---
+
+## 4a. tracker/lead — One lead with its status changes
+
+```
+GET|POST api/tracker/lead.json?id={token}&lead={lead_id}
+GET|POST api/gangs/lead.json?id={token}&lead={lead_id}
+```
+
+Returns one lead by its numeric ID together with the history of its status changes. Same owner scope as `tracker/leads`: the user's own leads; with the `gangs` alias the team's leads (optional `user=M` requires the lead to belong to that member). Parameters may be sent via GET or POST (`form-urlencoded` or JSON; POST wins).
+
+**Scope / auth:** API key + tariff gate — `payment-required` when not allowed.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `lead` | int | yes | Numeric lead ID. Empty/`0` → `no-lead`. |
+| `user` | int | no | `gangs` alias only: the lead must belong to this team member. |
+
+**Success response:**
+```json
+{
+  "status": "ok",
+  "data": {
+    "id": 77, "user": 13, "gang": 0,
+    "time": 1760698200, "date": 20261017,
+    "status": "approve", "custom": "Confirmed",
+    "goal": "paid", "price": 18, "currency": "usd",
+    "source": {
+      "click": "ca1337", "uid": "c1vvkg272m16", "flow": "ef1c",
+      "way": 123, "site": 42, "siteurl": "https://meow.pro/c8/cfb72fe561f0/", "filter": 0
+    },
+    "buyer": {
+      "name": "Hans", "phone": "+49 (30) 226-511-83", "email": "noreply@gmx.de",
+      "comment": false, "cost": 35, "costcur": "eur"
+    },
+    "visitor": {
+      "ip": "12.34.56.78", "geo": "de", "mobile": 0, "os": 2, "browser": 4,
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ... Safari/605.1.15"
+    },
+    "tags": {
+      "adid": "bf9d4aa8-4979-11ee-94c6-005056aec456",
+      "data1": false, "data2": false, "data3": false, "data4": false, "data5": false,
+      "utm_source": "fb", "utm_campaign": false, "utm_content": false, "utm_term": false,
+      "utm_medium": false, "domain": "meow.pro", "subid": "purr", "customer": false
+    },
+    "meta": {},
+    "changes": [
+      { "id": 301, "time": 1760698260, "from": 1, "to": 2, "from_status": "new", "to_status": "hold", "price": 0, "cost": 35 },
+      { "id": 307, "time": 1760698500, "from": 2, "to": 3, "from_status": "hold", "to_status": "approve", "price": 18, "cost": 35 }
+    ]
+  }
+}
+```
+
+Field notes:
+- Top level — `id`, `user` (owner), `gang` (team the lead belongs to, `0` if none), `time` (UNIX timestamp), `date` (arrival day as the integer `YYYYMMDD`), `status` (character code `new`/`hold`/`approve`/`cancel`/`trash`), `custom` (advertiser's own status text or `false`), `goal` (goal code or `false`), `price`, `currency`, `meta` (extra fields, empty when none).
+- `source` — `click` (character ID or `false`), `uid` (lead ID on the advertiser's side or `false`), `flow` (character ID), `way`, `site`, `siteurl` (or `false`), `filter` (filter result code, same list as in the leads list).
+- `buyer` — `name`, `phone`, `email`, `comment` (each `false` when empty), `cost` and `costcur` (cost and its currency).
+- `visitor` — `ip`, `geo`, `mobile` (`0` desktop / `1` mobile), `os`, `browser` (numeric IDs, same enumerations as in the leads list), `ua` (or `false`).
+- `tags` — `adid`, `data1`–`data5`, `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium`, `domain`, `subid`, `customer`; each a string or `false`.
+- `changes` — status history, oldest first, empty when none. A row is written whenever the status, the price or the cost of the lead changes. `from`/`to` are status numbers (`1` new, `2` hold, `3` approve, `4` cancel, `5` trash; `to` equals `from` for a price/cost-only change), `from_status`/`to_status` the character codes (or `false`), `price`/`cost` the values after the change, `time` the moment of the change.
+- Compared with the leads list the fields are grouped into `source`, `buyer`, `visitor` and `tags`; `time`, `date`, `gang` and `changes` are extra.
+
+**Errors:** `payment-required` (HTTP 400), `no-lead` (HTTP 400, `lead` missing), `not-found` (HTTP 404, no such lead or not in the caller's scope); with the `gangs` alias also `no-gang` and `access`.
 
 ---
 
@@ -472,7 +544,7 @@ The click-level analogue of `tracker/leads` — same filter/pagination/sorting m
 
 **Scope / auth:** API key + tariff gate — `payment-required` when not allowed.
 
-**Pagination:** identical mechanics to `tracker/leads`: pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching clicks. When `show` is absent/`0`, all matching clicks are returned unpaginated (`show = -1`, hard-capped at 10000 rows).
+**Pagination:** identical mechanics to `tracker/leads`: pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching clicks. When `show` is absent or below `1`, all matching clicks are returned unpaginated (`show = -1`, hard-capped at 10000 rows).
 
 **Sorting:** applied by the database.
 
@@ -485,7 +557,7 @@ The click-level analogue of `tracker/leads` — same filter/pagination/sorting m
 
 | Name | Description |
 |---|---|
-| `from`/`to` | Filter by click date (YYYY-MM-DD) |
+| `from`/`to` | Filter by click date (YYYY-MM-DD, tracker time zone) |
 | `ufrom`/`uto` | Filter by click time (UNIX timestamp) |
 | `geo` | Country code |
 | `ip` | IP address (matched through a 32-bit hash) |
@@ -498,6 +570,7 @@ The click-level analogue of `tracker/leads` — same filter/pagination/sorting m
 | `os` | Numeric OS ID |
 | `browser` | Numeric browser ID |
 | `unique` | Numeric unique flag |
+| `hour` | Hour of the day of the click, `0`–`23`, in the tracker time zone (the same as `from`/`to`) |
 | `next` | Numeric second-step flag |
 | `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium`, `domain`, `subid`, `customer` | Tag filters (matched through 32-bit hashes of the values) |
 | `click` | Symbolic click code |
@@ -505,7 +578,7 @@ The click-level analogue of `tracker/leads` — same filter/pagination/sorting m
 | `user` | Gang-only: restrict to team member |
 | `sort` | Column to sort by (see the allowed values above); unknown → click ID. Absent → no ordering. |
 | `order` | Sort direction; only `asc` gives ascending. Default `desc`. |
-| `show` | Rows per page (enables paging; absent/`0` → all rows, capped at 10000) |
+| `show` | Rows per page, at most `1000` (a larger value is reduced to `1000`, and `1000` is echoed back); enables paging. Absent or below `1` → all rows, capped at 10000 |
 | `page` | 1-based page number (with `show`) |
 
 **Success response** (`page`/`show`/`total` always present):
@@ -746,12 +819,13 @@ Saves per-user (or per-gang) tracker storage configuration. At least one paramet
 - `no-gang` — caller has no gang assigned
 - `access` — caller is not the gang admin
 
-**Available gang functions:** `postback`, `stats`, `leads`, `clicks`, `spend`
+**Available gang functions:** `postback`, `stats`, `leads`, `lead`, `clicks`, `spend`
 
 **Differences from user scope:**
 - `postback`: the lead is looked up among the team's leads instead of the user's
 - `stats`: scoped to the whole team; optional `?user=N` filters by team member
 - `leads`: scoped to the team's leads; optional `?user=M` refines
+- `lead`: looks the lead up among the team's leads; optional `?user=M` requires the lead to belong to that member
 - `clicks`: scoped to the team's clicks; optional `?user=M` refines (identical structure to `gangs/leads`)
 - `spend`: applies both the user and the team filters; `wm`/`user` param targets a team member
 

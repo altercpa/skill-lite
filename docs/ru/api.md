@@ -58,8 +58,9 @@ API фильтров и трекера позволяют работать с п
 ## Статистика трекера
 
 1. [Список лидов](api-stats.md#leads)
-2. [Статистика по кликам](api-stats.md#stats)
-3. [Список кликов](api-stats.md#clicks)
+2. [Данные лида](api-stats.md#lead)
+3. [Статистика по кликам](api-stats.md#stats)
+4. [Список кликов](api-stats.md#clicks)
 
 ## Click API — обработка переходов
 
@@ -85,6 +86,7 @@ API фильтров и трекера позволяют работать с п
 7. [Создать файл подтверждения](api-domains.md#domainsconfirm)
 8. [Изменить файл подтверждения](api-domains.md#domainschange)
 9. [Удалить файл подтверждения](api-domains.md#domainsremove)
+10. [DNS-записи для домена](api-domains.md#domainsdns)
 
 ## Потоки и пути
 
@@ -112,3 +114,8 @@ API фильтров и трекера позволяют работать с п
 7. [Запустить проверку вне расписания](api-adv.md#advupdate)
 8. [Удалить интеграцию](api-adv.md#advdel)
 9. [Журнал запросов интеграции](api-adv.md#advlog)
+
+## Журналы
+
+1. [Журнал API-запросов](api-logs.md#logsrequests)
+2. [Журнал исходящих постбеков](api-logs.md#logspostbacks)

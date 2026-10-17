@@ -3,7 +3,7 @@
   "info": {
     "title": "AlterCPA Lite — Parked Domains API",
     "version": "1.0.0",
-    "description": "Manage parked domains. Personal domains: user > 0, gang = 0. Team domains: user = 0, gang > 0. In gang scope only team domains are accessible — personal domains of team members are NOT accessible. list/add require an active subscription except scope=admin; check/del/glue do not check billing at all. domains/files, domains/confirm, domains/change, domains/remove manage per-domain confirmation files served at the domain root (e.g. search-engine verification files, ads.txt); they also perform no billing check. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+    "description": "Manage parked domains. Personal domains: user > 0, gang = 0. Team domains: user = 0, gang > 0. In gang scope only team domains are accessible — personal domains of team members are NOT accessible. list/add require an active subscription except scope=admin; check/del/glue do not check billing at all. domains/dns returns the parking IP addresses and the DNS records to point a domain at (read-only, no billing check). domains/files, domains/confirm, domains/change, domains/remove manage per-domain confirmation files served at the domain root (e.g. search-engine verification files, ads.txt); they also perform no billing check. Success is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
   },
   "servers": [
     {
@@ -1383,6 +1383,136 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/domains/dns.json": {
+      "get": {
+        "operationId": "domainsDns",
+        "summary": "Parking IPs and DNS records for a domain",
+        "tags": [
+          "Domains"
+        ],
+        "description": "Returns the parking IP addresses and the ready DNS records to create at the registrar so that a domain points to the tracker. Read-only: no domain is added or changed; no billing check. The addresses depend on the parking setup of the user: a user who belongs to a team gets the addresses of the team setup. scope=gang uses the setup of the caller's own account; a user that is given must be a member of your team (otherwise the scope error) and does not change the result; scope=admin needs the user parameter. At most one A and one AAAA record are returned; with several addresses a random one is chosen on every call. Error codes by HTTP status: 400 scope, no-user.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=admin (required there): user whose parking addresses are returned. scope=gang: optional team member; a user outside your team is refused with the scope error, a valid one does not change the result"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Parking addresses and DNS records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "ips",
+                        "records"
+                      ],
+                      "properties": {
+                        "ips": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Parking IP addresses (IPv4 and IPv6); empty when none"
+                        },
+                        "records": {
+                          "type": "array",
+                          "description": "DNS records to create; empty when there are no addresses. At most one A and one AAAA record.",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "name",
+                              "type",
+                              "value"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "Record name; always @ (the domain root)"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "A",
+                                  "AAAA"
+                                ],
+                                "description": "A for an IPv4 address, AAAA for an IPv6 address"
+                              },
+                              "value": {
+                                "type": "string",
+                                "description": "IP address the record points to"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "ok": {
+                    "value": {
+                      "status": "ok",
+                      "data": {
+                        "ips": [
+                          "203.0.113.10",
+                          "2001:db8::10"
+                        ],
+                        "records": [
+                          {
+                            "name": "@",
+                            "type": "A",
+                            "value": "203.0.113.10"
+                          },
+                          {
+                            "name": "@",
+                            "type": "AAAA",
+                            "value": "2001:db8::10"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "500": {
             "$ref": "#/components/responses/ServerError"

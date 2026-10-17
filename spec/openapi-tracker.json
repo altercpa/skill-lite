@@ -3,7 +3,7 @@
   "info": {
     "title": "AlterCPA Lite — Tracker, Gangs & Click API",
     "version": "1.0.0",
-    "description": "Three subsystems: /api/tracker/* (postback, stats, leads, clicks, spend, settings, templates, networks), /api/gangs/* (team-scope wrappers over tracker functions), and the Click/TDS routes (/track-tds/, /track-dom/, /track-pxl/, /track-thx/) which use a different routing mechanism without standard API auth.\n\ntracker/stats, tracker/leads, and tracker/clicks accept GET or POST, support page navigation via show/page, and support column sorting via sort/order (default order is desc).\n\nIMPORTANT: tracker/stats, tracker/leads, and tracker/clicks return 'payment-required' (not 'unpaid') as the billing error — this answers HTTP 400, not 402.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+    "description": "Three subsystems: /api/tracker/* (postback, stats, leads, lead, clicks, spend, settings, templates, networks), /api/gangs/* (team-scope wrappers over tracker functions), and the Click/TDS routes (/track-tds/, /track-dom/, /track-pxl/, /track-thx/) which use a different routing mechanism without standard API auth.\n\ntracker/stats, tracker/leads, and tracker/clicks accept GET or POST, support page navigation via show/page, and support column sorting via sort/order (default order is desc).\n\nIMPORTANT: tracker/stats, tracker/leads, tracker/lead, and tracker/clicks return 'payment-required' (not 'unpaid') as the billing error — this answers HTTP 400, not 402.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
   },
   "servers": [
     {
@@ -49,7 +49,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "Function-level error (HTTP 400): payment-required (stats, leads, clicks: answered with 400, not 402), no-item, no-from, no-to, no-changes, no-params, no-gang (gangs/*); any error code not listed for another status.",
+        "description": "Function-level error (HTTP 400): payment-required (stats, leads, lead, clicks: answered with 400, not 402), no-lead (lead), no-item, no-from, no-to, no-changes, no-params, no-gang (gangs/*); any error code not listed for another status.",
         "headers": {
           "X-API-Status": {
             "$ref": "#/components/headers/XApiStatus"
@@ -137,7 +137,7 @@
         }
       },
       "NotFound": {
-        "description": "no-click, bad-click (click code missing or unknown), bad-flow (flow not found); spend: empty (no usable price or filter condition).",
+        "description": "no-click, bad-click (click code missing or unknown), bad-flow (flow not found); spend: empty (no usable price or filter condition); lead: not-found (no such lead or outside the caller's scope).",
         "headers": {
           "X-API-Status": {
             "$ref": "#/components/headers/XApiStatus"
@@ -612,7 +612,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Localized status string (not canonical code). Use st= filter for programmatic filtering."
+            "description": "Character status code: new, hold, approve, cancel or trash (not translated)."
           },
           "custom": {
             "type": "string",
@@ -1020,6 +1020,312 @@
               "hide6": {
                 "type": "string"
               }
+            }
+          }
+        }
+      },
+      "LeadChange": {
+        "type": "object",
+        "description": "One recorded change of the lead's status, price or cost.",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp of the change"
+          },
+          "from": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Status number before the change: 1=new, 2=hold, 3=approve, 4=cancel, 5=trash"
+          },
+          "to": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Status number after the change; equals from when only the price or the cost changed"
+          },
+          "from_status": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character status before the change, false if unknown"
+          },
+          "to_status": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Character status after the change, false if unknown"
+          },
+          "price": {
+            "type": "number",
+            "description": "Lead price after the change"
+          },
+          "cost": {
+            "type": "number",
+            "description": "Lead cost after the change"
+          }
+        }
+      },
+      "LeadDetail": {
+        "type": "object",
+        "description": "One lead with its fields grouped into source, buyer, visitor and tags, plus the status-change history.",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "integer",
+            "description": "Owner user ID"
+          },
+          "gang": {
+            "type": "integer",
+            "description": "ID of the team the lead belongs to, 0 if none"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp of arrival"
+          },
+          "date": {
+            "type": "integer",
+            "description": "Arrival day as the integer YYYYMMDD"
+          },
+          "status": {
+            "type": "string",
+            "description": "Character status code: new, hold, approve, cancel or trash (not translated)."
+          },
+          "custom": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Raw advertiser status text, false if none"
+          },
+          "goal": {
+            "type": [
+              "string",
+              "boolean"
+            ],
+            "description": "Goal code or false"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "click": {
+                "type": [
+                  "string",
+                  "boolean"
+                ],
+                "description": "Symbolic click ID or false"
+              },
+              "uid": {
+                "type": [
+                  "string",
+                  "boolean"
+                ],
+                "description": "Advertiser-side lead ID or false"
+              },
+              "flow": {
+                "type": "string",
+                "description": "Symbolic flow code"
+              },
+              "way": {
+                "type": "integer"
+              },
+              "site": {
+                "type": "integer"
+              },
+              "siteurl": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "filter": {
+                "type": "integer",
+                "description": "Filter result code (same list as in the leads list)"
+              }
+            }
+          },
+          "buyer": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "phone": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "email": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "comment": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "cost": {
+                "type": "number",
+                "description": "Lead cost (not the commission price)"
+              },
+              "costcur": {
+                "type": "string",
+                "description": "Lead cost currency"
+              }
+            }
+          },
+          "visitor": {
+            "type": "object",
+            "properties": {
+              "ip": {
+                "type": "string"
+              },
+              "geo": {
+                "type": "string",
+                "description": "Two-letter country code"
+              },
+              "mobile": {
+                "type": "integer",
+                "description": "0 = desktop, 1 = mobile"
+              },
+              "os": {
+                "type": "integer",
+                "description": "Numeric OS ID (same enumeration as the os field of the leads list); 0 if no UA was stored"
+              },
+              "browser": {
+                "type": "integer",
+                "description": "Numeric browser ID (same enumeration as the browser field of the leads list); 0 if no UA was stored"
+              },
+              "ua": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              }
+            }
+          },
+          "tags": {
+            "type": "object",
+            "description": "Each tag is a string or false when empty.",
+            "properties": {
+              "adid": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "data1": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "data2": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "data3": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "data4": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "data5": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "utm_source": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "utm_campaign": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "utm_content": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "utm_term": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "utm_medium": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "domain": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "subid": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "customer": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              }
+            }
+          },
+          "meta": {
+            "type": [
+              "object",
+              "array"
+            ],
+            "description": "Additional lead fields (empty when none)"
+          },
+          "changes": {
+            "type": "array",
+            "description": "Status-change history, oldest first (empty when none)",
+            "items": {
+              "$ref": "#/components/schemas/LeadChange"
             }
           }
         }
@@ -1697,7 +2003,7 @@
               "type": "string",
               "format": "date"
             },
-            "description": "Filter by lead date (YYYY-MM-DD)"
+            "description": "Filter by lead date (YYYY-MM-DD, tracker time zone)"
           },
           {
             "name": "to",
@@ -1705,7 +2011,8 @@
             "schema": {
               "type": "string",
               "format": "date"
-            }
+            },
+            "description": "Filter by lead date (YYYY-MM-DD, tracker time zone)"
           },
           {
             "name": "ufrom",
@@ -1782,6 +2089,40 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "mobile",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Device flag: 0 = desktop, 1 = mobile"
+          },
+          {
+            "name": "os",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric OS ID (same enumeration as the os response field)"
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric browser ID (same enumeration as the browser response field)"
+          },
+          {
+            "name": "hour",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            },
+            "description": "Hour of the day of the lead (0-23), counted in the tracker time zone, the same as from/to"
           },
           {
             "name": "gl",
@@ -1940,7 +2281,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Rows per page; show>0 enables paging. Absent/0 -> all rows (capped at 10000), show=-1 in response."
+            "description": "Rows per page, at most 1000 (a larger value is reduced to 1000 and 1000 is echoed in the response); show>0 enables paging. Absent or below 1 -> all rows (capped at 10000), show=-1 in response."
           },
           {
             "name": "page",
@@ -1985,7 +2326,7 @@
                     },
                     "show": {
                       "type": "integer",
-                      "description": "Echoed page size, or -1 when pagination was not requested"
+                      "description": "Page size actually used (not more than 1000), or -1 when pagination was not requested"
                     },
                     "total": {
                       "type": "integer",
@@ -2014,6 +2355,72 @@
         }
       }
     },
+    "/api/tracker/lead.json": {
+      "get": {
+        "operationId": "trackerLead",
+        "summary": "One lead with its status changes",
+        "tags": [
+          "Tracker Statistics"
+        ],
+        "description": "Returns one lead by its numeric ID together with the history of its status changes (changes, oldest first). A change is recorded whenever the status, the price or the cost of the lead changes. The owner scope is the same as in the leads list: the user's own leads. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET).\n\nThe lead fields are grouped into source, buyer, visitor and tags; time, date, gang and changes are extra compared with the leads list.\n\nError codes by HTTP status: 400 payment-required (subscription expired), 400 no-lead (lead parameter missing), 404 not-found (no such lead or it is outside the caller's scope).",
+        "parameters": [
+          {
+            "name": "lead",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric lead ID. Required.",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One lead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "data"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LeadDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/tracker/clicks.json": {
       "get": {
         "operationId": "trackerClicks",
@@ -2030,7 +2437,7 @@
               "type": "string",
               "format": "date"
             },
-            "description": "Filter by click date (YYYY-MM-DD)"
+            "description": "Filter by click date (YYYY-MM-DD, tracker time zone)"
           },
           {
             "name": "to",
@@ -2038,7 +2445,8 @@
             "schema": {
               "type": "string",
               "format": "date"
-            }
+            },
+            "description": "Filter by click date (YYYY-MM-DD, tracker time zone)"
           },
           {
             "name": "ufrom",
@@ -2147,6 +2555,16 @@
               "type": "integer"
             },
             "description": "Numeric second-step flag"
+          },
+          {
+            "name": "hour",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            },
+            "description": "Hour of the day of the click (0-23), counted in the tracker time zone, the same as from/to"
           },
           {
             "name": "utm_source",
@@ -2270,7 +2688,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Rows per page; show>0 enables paging. Absent/0 -> all rows (capped at 10000), show=-1 in response."
+            "description": "Rows per page, at most 1000 (a larger value is reduced to 1000 and 1000 is echoed in the response); show>0 enables paging. Absent or below 1 -> all rows (capped at 10000), show=-1 in response."
           },
           {
             "name": "page",
@@ -2315,7 +2733,7 @@
                     },
                     "show": {
                       "type": "integer",
-                      "description": "Echoed page size, or -1 when pagination was not requested"
+                      "description": "Page size actually used (not more than 1000), or -1 when pagination was not requested"
                     },
                     "total": {
                       "type": "integer",
@@ -2964,6 +3382,57 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/gangs/lead.json": {
+      "get": {
+        "operationId": "gangsLead",
+        "summary": "Team-scope lead details",
+        "tags": [
+          "Gangs (Team Scope)"
+        ],
+        "description": "Same as tracker/lead but the lead is looked up among the team's leads. Optional user= requires the lead to belong to that team member.",
+        "parameters": [
+          {
+            "name": "lead",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Numeric lead ID. Required."
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same response as tracker/lead. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/ServerError"

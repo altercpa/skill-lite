@@ -2,12 +2,12 @@
 
 ## profile/* — User Account
 
-The `profile` app covers user authentication, profile management, registration, and password recovery.
+The `profile` app covers user authentication, profile management, API key reset, registration, and password recovery.
 
 Base URL: `api/profile/{func}.json`
 
 **Auth split:**
-- `profile/info` and `profile/edit` require `?id={token}`
+- `profile/info`, `profile/edit` and `profile/reset` require `?id={token}`
 - `profile/login`, `profile/register`, `profile/recover` do NOT require a token
 
 ---
@@ -65,18 +65,41 @@ No parameters beyond auth. Admin can use `uu=N` to read another user's profile.
   "info": {
     "reg": 1690000000,
     "tz": "Europe/Moscow",
-    "lang": "en"
+    "lang": "en",
+    "avatar": "https://tracker.example.com/data/avatar/13.jpg"
   },
   "meta": {
     "lang": "en",
     "skin": "default",
-    "avatar": false
+    "avatar": true,
+    "telegram": "john"
+  },
+  "gang": {
+    "id": 3,
+    "name": "Meow team",
+    "admin": true,
+    "boss": false,
+    "make": true
+  },
+  "contacts": [
+    { "code": "telegram", "name": "Telegram", "icon": "telegram", "type": 1, "url": "https://t.me/%s", "reg": false }
+  ],
+  "tz": {
+    "site": "Europe/Moscow",
+    "user": "Europe/Berlin",
+    "utz": true
   }
 }
 ```
 
-`access.level > 0` = admin user.
-`meta` includes all stored user meta keys (lang, skin, avatar, contact fields).
+Field notes:
+- `access.level > 0` = admin user.
+- `info.tz` — the user's personal time zone, `false` when unset. `info.lang` — language code, `false` when unset.
+- `info.avatar` — absolute URL of the 100×100 avatar when the user uploaded one, `false` otherwise (no default-avatar URL is returned).
+- `meta` — all stored user meta keys (lang, skin, avatar flag, contact fields).
+- `gang` — the user's team card. `id` is `0` (and `name`/`admin`/`boss` are `false`) when the user has no team. `admin` — the user is a team admin; `boss` — the user is the team owner (its creator); `make` — `false` when team creation is disabled on this tracker.
+- `contacts` — the contact fields configured on this tracker (the same codes that appear as keys in `meta` and that `profile/edit` accepts). Entry: `code`; `name` (label in the caller's language); `icon`; `type` (`0` simple value, `1` social profile, `2` URL link, `3` value with label); `url` (link template where `%s` stands for the stored value, `false` when the field is not a link); `reg` (required at registration).
+- `tz` — `site` is the tracker time zone (always a valid identifier); `user` is the user's personal zone or `false`; `utz` is `true` when personal time zones are enabled on this tracker (only then `profile/edit` saves `tz`).
 
 **Errors:** None from the function. Non-existent `uu` target returns zeros silently.
 
@@ -88,41 +111,65 @@ No parameters beyond auth. Admin can use `uu=N` to read another user's profile.
 POST api/profile/edit.json?id={token}
 ```
 
-For avatar upload: `Content-Type: multipart/form-data`. Otherwise form-encoded or JSON.
+A **partial update**: only the parameters you send are changed; everything omitted stays as it is. Send the request as form-encoded or JSON; for an avatar upload use `Content-Type: multipart/form-data`.
 
 **Parameters (POST wins over GET):**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | yes | Display name |
-| `email` | string | no | New email (validated, must be unique) |
-| `pass` | string | no | New plaintext password |
-| `conf` | string | no | Password confirmation (must match `pass` exactly) |
-| `tz` | string | no | Timezone identifier (only saved if the tracker's per-user time zones setting is on) |
-| `lang` | string | no | Language code. **Always overwrites** — omitting this field resets language. |
-| `skin` | string | no | Skin code. **Always overwrites**. |
+| `name` | string | no | Display name. If sent, it must not be empty (else `info`). |
+| `email` | string | no | New email (validated, must be unique). |
+| `pass` | string | no | New plaintext password. Applied only together with a matching `conf`. |
+| `conf` | string | no | Password confirmation (must match `pass` exactly). |
+| `tz` | string | no | Time-zone identifier; an empty string clears the personal zone. Considered only when personal time zones are enabled (`tz.utz` in `profile/info`); otherwise silently ignored. An unknown identifier → `bad-tz`. |
+| `lang` | string | no | Language code. |
+| `skin` | string | no | Skin code. |
+| contact fields | string | no | Any contact code from `profile/info` → `contacts[].code` (e.g. `telegram`). An empty value clears the field. |
 | `unavatar` | any | no | Truthy = clear avatar |
 | `avatar` | file | no | Avatar file (jpg/jpeg/png/gif/webm/webp/svg/avif). Saved as 100×100 and 40×40 JPG. |
 
 **Warnings:**
-- `lang` and `skin` are always overwritten even if not provided — omitting them resets to empty.
-- Duplicate email is silently ignored (no error, no update — `status: ok` without `data.mail`).
-- Avatar upload requires `multipart/form-data`.
-- Avatar upload failures are silently ignored.
-- `data.pass` in response contains the password **hash**, not the plaintext.
+- Omitting `lang`/`skin`/`tz`/`name`/contact fields leaves them unchanged.
+- A duplicate or invalid `email` is silently ignored (no error, no update — `status: ok` without `data.mail`). A `pass` without a matching `conf` is silently ignored too.
+- Avatar upload requires `multipart/form-data`; upload failures are silently ignored.
+- The password (hash) is never returned.
 
 **Success response:**
 ```json
 {
   "status": "ok",
   "data": { "name": "John" },
-  "meta": { "lang": "en", "skin": "default", "avatar": false }
+  "meta": { "lang": "en", "telegram": "john" }
 }
 ```
 
-`data` contains only changed user-row fields. `meta` shows the submitted patch (not the final merged meta).
+`data` contains the user-row fields (`name`, `tz`, `mail`) and `meta` the meta keys (`lang`, `skin`, contact codes — `false` when cleared, `avatar` — `true`/`false`) that were accepted from this request, each with the value now stored — even when it equals the value the account already had. Only `mail` is compared with the current address: it is returned only when it is a new, unused address. A new password is saved but never echoed, so a request that sets only the password also returns empty `data` and `meta`. When nothing valid was sent, both are empty (`[]`) and nothing is saved.
 
-**Errors:** `info` (name missing/empty), `save` (update failed)
+**Errors:** `info` (`name` sent but empty), `bad-tz` (unknown time-zone identifier), `bad-id` (user not found, e.g. a bad `uu`), `save` (update failed)
+
+---
+
+### profile/reset — Reset the API key
+
+```
+GET api/profile/reset.json?id={token}
+```
+
+Generates a new API key for the account. The old key stops working immediately, so every later request must use the new token. Admin can use `uu=N` to reset another user's key.
+
+**Success response:**
+```json
+{
+  "status": "ok",
+  "id": 13,
+  "api": "9f1c2e7a4b6d4e0f8a3b5c7d9e1f2a4b",
+  "token": "13-9f1c2e7a4b6d4e0f8a3b5c7d9e1f2a4b"
+}
+```
+
+`token` is the ready-to-use value of the `id` request parameter (`{id}-{api}`).
+
+**Errors:** `bad-id` (user not found; HTTP 404), `save` (update failed; HTTP 400)
 
 ---
 

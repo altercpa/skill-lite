@@ -1,6 +1,6 @@
 # Parked Domains
 
-The parked domains API lets you manage domains parked on tracker storage: retrieve the list, add domains, trigger a status check, delete domains, and link them to [flows](api-flows.md). Domains are used as the primary link address for a flow and support IDN (internationalized domain names). It also lets you manage confirmation files served at the domain root — small text/markup files (e.g. search-engine ownership verification files, `ads.txt`) that prove ownership of the domain or serve static declarations, without deploying a real web server behind the parked domain.
+The parked domains API lets you manage domains parked on tracker storage: retrieve the list, add domains, trigger a status check, delete domains, and link them to [flows](api-flows.md). Domains are used as the primary link address for a flow and support IDN (internationalized domain names). It also lets you manage confirmation files served at the domain root — small text/markup files (e.g. search-engine ownership verification files, `ads.txt`) that prove ownership of the domain or serve static declarations, without deploying a real web server behind the parked domain. Finally, it returns the parking IP addresses and the DNS records to point a domain to the tracker ([DNS records for a domain](#domainsdns)).
 
 Each domain belongs either to a specific user (personal domain) or to the team as a whole (team domain). When working with `scope=gang` the API serves exclusively team domains — shared across the entire team. Personal domains of team members are not accessible in gang scope. The same ownership convention applies to confirmation files: a file's owner is copied from its parent domain's owner at creation time and does not change afterwards.
 
@@ -52,7 +52,7 @@ The function returns an associative array:
 
 Error codes:
 
-- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights).
+- `scope` — workspace permission check failed (invalid scope, missing team lead or administrator rights, or, for `scope=gang`, a `user` parameter that is not a member of your team).
 - `unpaid` — tracker access has expired or is unpaid (only for `scope=user` and `scope=gang`).
 
 Fields of a record in `data`:
@@ -706,5 +706,75 @@ Example of an error server response:
 {
     "status": "error",
     "error": "not-found"
+}
+```
+
+<a id="domainsdns"></a>
+## DNS Records for a Domain
+
+**Webmaster URL**: `https://domain.com/api/domains/dns.json?id={token}`
+
+**Team URL**: `https://domain.com/api/domains/dns.json?id={token}&scope=gang`
+
+**Admin URL**: `https://domain.com/api/domains/dns.json?id={token}&scope=admin`
+
+The function returns the parking IP addresses and the ready DNS records to create at the domain registrar so that a domain points to the tracker. The function only reads data: no domain is added or changed, and billing status is not checked. The addresses depend on the parking setup of the user: a user who belongs to a team gets the addresses of the team setup. For `scope=gang` the setup of your own account is used. If `user` is given, it must be a member of your team, otherwise the function returns the `scope` error; a valid member does not change the result.
+
+The function accepts the following input parameters:
+
+| Field | Description |
+| --- | --- |
+| `scope` | Workspace: `user` (default), `gang`/`team`, `admin`/`sys`. |
+| `user` | For `scope=admin`: ID of the user whose parking addresses are returned. Required for `scope=admin`. |
+
+The function returns an associative array:
+
+| Field | Description |
+| --- | --- |
+| `status` | Operation result: `ok` on success, `error` on failure. |
+| `error` | Error code for `error` status (see below). |
+| `data` | Parking addresses and DNS records (see below). |
+
+Error codes:
+
+- `scope` — the requested workspace is not available to you (not a team leader, not an administrator, the account is blocked, or, with `scope=gang`, `user` names someone who is not a member of your team).
+- `no-user` — `scope=admin` was used without the `user` parameter.
+
+Fields of `data`:
+
+| Field | Description |
+| --- | --- |
+| `ips` | List of parking IP addresses (IPv4 and IPv6) as strings; an empty list if there are none. |
+| `records` | List of DNS records to create (see below); an empty list if there are no addresses. It holds at most one `A` and one `AAAA` record. If the setup has several addresses, a random one is chosen on every call. |
+
+Each entry of `records`:
+
+| Field | Description |
+| --- | --- |
+| `name` | Record name; always `@` (the domain root). |
+| `type` | Record type: `A` for an IPv4 address, `AAAA` for an IPv6 address. |
+| `value` | IP address the record points to. |
+
+Example of a successful server response:
+
+```json
+{
+    "status": "ok",
+    "data": {
+        "ips": ["203.0.113.10", "2001:db8::10"],
+        "records": [
+            { "name": "@", "type": "A", "value": "203.0.113.10" },
+            { "name": "@", "type": "AAAA", "value": "2001:db8::10" }
+        ]
+    }
+}
+```
+
+Example of an error server response:
+
+```json
+{
+    "status": "error",
+    "error": "scope"
 }
 ```

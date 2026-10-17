@@ -9,7 +9,7 @@ Statistics functions provide access to reports on leads and clicks.
 
 **URL for team**: `https://domain.com/api/gangs/leads.json?id={token}`
 
-The function retrieves the list of leads and returns it as an associative array in the `leads` field. Parameters may be passed via GET or POST (`form-urlencoded` or JSON). Use the `show` and `page` parameters for page navigation; without `show`, all matching leads are returned at once. It is not recommended to load more than a thousand leads at a time — if you get a 500 error, there was not enough memory for your request, so reduce the request period or use pagination. Use the `sort` and `order` parameters to control the order of returned leads; without `sort`, leads are returned in natural (insertion) order.
+The function retrieves the list of leads and returns it as an associative array in the `leads` field. Parameters may be passed via GET or POST (`form-urlencoded` or JSON). Use the `show` and `page` parameters for page navigation; without `show`, all matching leads are returned at once (capped at 10000 rows). It is not recommended to load more than a thousand leads at a time — if you get a 500 error, there was not enough memory for your request, so reduce the request period or use pagination. Use the `sort` and `order` parameters to control the order of returned leads; without `sort`, leads are returned in natural (insertion) order.
 
 The function can accept the following GET or POST filtering parameters as input:
 
@@ -27,6 +27,10 @@ The function can accept the following GET or POST filtering parameters as input:
 | `site` | Numeric site ID. |
 | `goal` | Character goal ID. |
 | `filter` | The result of the filters (see below) |
+| `mobile` | Traffic type: `0` for desktop traffic or `1` for mobile traffic. |
+| `os` | Operating system numeric ID (see the list below). |
+| `browser` | Browser numeric ID (see the list below). |
+| `hour` | Hour of the day when the lead arrived (number from 0 to 23), counted in the tracker time zone, the same as `from` and `to`. |
 | `domain` | The domain from which the lead was sent. |
 | `ip` | Lead IP address. |
 | `utm_source` | The value of **UTM Source** tag. |
@@ -39,7 +43,7 @@ The function can accept the following GET or POST filtering parameters as input:
 | `sort` | Column to sort leads by (see below). Without it, leads are returned in natural (insertion) order. |
 | `order` | Sort direction: `asc` or `desc`. By default `desc`. |
 | `user` | User ID in team. |
-| `show` | Number of leads per page. Enables pagination. Without it, all matching leads are returned and `show` is `-1` in the response. |
+| `show` | Number of leads per page, at most `1000`: a larger value is reduced to `1000`, and `1000` is returned in the response. Enables pagination. Without it, or with a value below `1`, all matching leads are returned (capped at 10000 rows) and `show` is `-1` in the response. |
 | `page` | Page number, starting from `1` (used together with `show`). |
 
 Character statuses of the lead (`status`):
@@ -84,7 +88,7 @@ The result of the function is an associative array:
 | `status` | The result of the operation: `ok` in case of success, `error` in case of an error. |
 | `leads` | An array of leads, the composition of the fields is analyzed further. |
 | `page` | Current page number (echoes the request, `1` by default). |
-| `show` | Page size, or `-1` when pagination was not requested. |
+| `show` | Page size actually used (not more than `1000`), or `-1` when pagination was not requested. |
 | `total` | Total number of matching leads. When paginated it is the full count; otherwise it equals the number of returned leads. |
 | `error` | Error code for status `error` with value from the list:
 						
@@ -227,6 +231,228 @@ Browsers (`browser`):
 {
     "status": "error",
     "error": "payment-required"
+}
+```
+
+<a id="lead"></a>
+## Lead details
+
+**URL for user**: `https://domain.com/api/tracker/lead.json?id={token}&lead={lead_id}`
+
+**URL for team**: `https://domain.com/api/gangs/lead.json?id={token}&lead={lead_id}`
+
+The function returns one lead by its numeric ID together with the history of its status changes. Use it when you need the full card of a single lead, for example to see how its status, price and cost changed over time. Parameters may be passed via GET or POST (`form-urlencoded` or JSON).
+
+The function accepts the following input parameters:
+
+| Field | Description |
+| --- | --- |
+| `lead`* | Numeric lead ID. Required parameter. |
+| `user` | User ID in team. Used with the team URL: the lead must belong to this team member. |
+
+The function returns an associative array:
+
+| Field | Description |
+| --- | --- |
+| `status` | Operation result: `ok` on success, `error` on failure. |
+| `error` | Error code for `error` status (see below) |
+| `data` | The lead, the composition of the fields is analyzed further. |
+
+Error codes:
+
+- `payment-required` - your subscription has expired, [renew your subscription](/payments).
+- `no-lead` - the `lead` parameter is missing or empty.
+- `not-found` - there is no such lead, or it does not belong to you (with the team URL — to your team).
+- `no-gang` - you are not a member of a team (team URL only).
+- `access` - you are not a leader of the team (team URL only).
+
+Inside the `data` field, the lead is represented by an associative array with fields:
+
+| Field | Description |
+| --- | --- |
+| `id` | Lead numeric ID. |
+| `user` | User ID in team. |
+| `gang` | ID of the team the lead belongs to, `0` if there is none. |
+| `time` | Lead arrival time in UNIX Timestamp format. |
+| `date` | Lead arrival date as a number in `YYYYMMDD` format. |
+| `status` | Character status of the lead (see the [leads list](#leads)) |
+| `custom` | Real statustext of the lead sent by the advertiser. |
+| `goal` | Character goal ID. |
+| `price` | Lead price (always available regardless of status). |
+| `currency` | Lead price currency, by default `usd`. |
+| `source` | Where the lead came from, an array described below. |
+| `buyer` | Customer data, an array described below. |
+| `visitor` | Visitor data, an array described below. |
+| `tags` | Tags of the lead, an array described below. |
+| `meta` | Array of additional lead fields. |
+| `changes` | List of the lead's status changes, oldest first; an empty list if there were none. Composition detailed below. |
+
+Fields of `source`:
+
+| Field | Description |
+| --- | --- |
+| `click` | Character click ID. |
+| `uid` | Unique lead identifier on the advertiser's side. |
+| `flow` | Character flow ID. |
+| `way` | Numeric way ID. |
+| `site` | Numeric site ID. |
+| `siteurl` | Site URL. |
+| `filter` | The result of the filters (see the [leads list](#leads)) |
+
+Fields of `buyer`:
+
+| Field | Description |
+| --- | --- |
+| `name` | Customer's name. |
+| `phone` | Customer's phone (without validation and correction). |
+| `email` | Customer's email (without validation and correction). |
+| `comment` | Lead comment. |
+| `cost` | Lead cost (not the commission price, it's above). |
+| `costcur` | Lead cost currency, by default `usd`. |
+
+Fields of `visitor`:
+
+| Field | Description |
+| --- | --- |
+| `ip` | Lead IP address. |
+| `geo` | Two-letter ISO code of lead country. |
+| `mobile` | Traffic type: `0` for desktop traffic or `1` for mobile traffic. |
+| `os` | Operating system numeric ID, detected from the `ua` field (see the [leads list](#leads)). `0` if no user-agent was stored. |
+| `browser` | Browser numeric ID, detected from the `ua` field (see the [leads list](#leads)). `0` if no user-agent was stored. |
+| `ua` | Browser User Agent |
+
+Fields of `tags`:
+
+| Field | Description |
+| --- | --- |
+| `adid` | Ad click ID (`fbclid`, `gclid`, `adclid`, `clid`, `adid`). |
+| `data1` | Custom data 1. |
+| `data2` | Custom data 2. |
+| `data3` | Custom data 3. |
+| `data4` | Custom data 4. |
+| `data5` | Custom data 5. |
+| `utm_source` | The value of UTM Source tag. |
+| `utm_campaign` | The value of UTM Campaign tag. |
+| `utm_content` | The value of UTM Content tag. |
+| `utm_term` | The value of UTM Term tag. |
+| `utm_medium` | The value of UTM Medium tag. |
+| `domain` | The domain from which the lead was sent. |
+| `subid` | The value of `subid` tag. |
+| `customer` | The value of Customer tag. |
+
+A change is recorded when the status, the price or the cost of the lead changes. Each element of `changes` is an associative array with fields:
+
+| Field | Description |
+| --- | --- |
+| `id` | Change numeric ID. |
+| `time` | Time of the change in UNIX Timestamp format. |
+| `from` | Status number before the change (see below). |
+| `to` | Status number after the change (see below). It equals `from` if only the price or the cost changed. |
+| `from_status` | Character status before the change (see the [leads list](#leads)), `false` if unknown. |
+| `to_status` | Character status after the change (see the [leads list](#leads)), `false` if unknown. |
+| `price` | Lead price after the change. |
+| `cost` | Lead cost after the change. |
+
+Status numbers (`from`, `to`):
+
+- `1` - new.
+- `2` - hold.
+- `3` - approve.
+- `4` - cancel.
+- `5` - trash.
+
+**Example of a successful server response:**
+
+```json
+{
+    "status": "ok",
+    "data": {
+        "id": 77,
+        "user": 13,
+        "gang": 0,
+        "time": 1760698200,
+        "date": 20261017,
+        "status": "approve",
+        "custom": "Confirmed",
+        "goal": "paid",
+        "price": 18,
+        "currency": "usd",
+        "source": {
+            "click": "ca1337",
+            "uid": "c1vvkg272m16",
+            "flow": "ef1c",
+            "way": 123,
+            "site": 42,
+            "siteurl": "https://meow.pro/c8/cfb72fe561f0/",
+            "filter": 0
+        },
+        "buyer": {
+            "name": "Hans",
+            "phone": "+49 (30) 226-511-83",
+            "email": "noreply@gmx.de",
+            "comment": "Confirmed on sunday",
+            "cost": 35,
+            "costcur": "eur"
+        },
+        "visitor": {
+            "ip": "12.34.56.78",
+            "geo": "de",
+            "mobile": 0,
+            "os": 2,
+            "browser": 4,
+            "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Safari/605.1.15"
+        },
+        "tags": {
+            "adid": "bf9d4aa8-4979-11ee-94c6-005056aec456",
+            "data1": "wj80b89eit8epaarikhe2oge",
+            "data2": false,
+            "data3": false,
+            "data4": false,
+            "data5": false,
+            "utm_source": "fb",
+            "utm_campaign": "1013444211662",
+            "utm_content": "432211555332166",
+            "utm_term": false,
+            "utm_medium": false,
+            "domain": "meow.pro",
+            "subid": "purr",
+            "customer": "vendoso"
+        },
+        "meta": {
+            "foo": "bar"
+        },
+        "changes": [
+            {
+                "id": 301,
+                "time": 1760698260,
+                "from": 1,
+                "to": 2,
+                "from_status": "new",
+                "to_status": "hold",
+                "price": 0,
+                "cost": 35
+            },
+            {
+                "id": 307,
+                "time": 1760698500,
+                "from": 2,
+                "to": 3,
+                "from_status": "hold",
+                "to_status": "approve",
+                "price": 18,
+                "cost": 35
+            }
+        ]
+    }
+}
+```
+
+**Example of a server response with an error:**
+
+```json
+{
+    "status": "error",
+    "error": "not-found"
 }
 ```
 
@@ -481,6 +707,7 @@ The function can accept the following GET or POST filtering parameters as input:
 | `browser` | Browser (see below) |
 | `unique` | Numeric flag: `1` for unique clicks only, `0` for repeated clicks only. |
 | `next` | Numeric flag: `1` for clicks that moved to the second step, `0` for clicks that did not. |
+| `hour` | Hour of the day when the click arrived (number from 0 to 23), counted in the tracker time zone, the same as `from` and `to`. |
 | `domain` | The domain from which the click arrived. |
 | `utm_source` | The value of **UTM Source** tag. |
 | `utm_campaign` | The value of **UTM Campaign** tag. |
@@ -492,7 +719,7 @@ The function can accept the following GET or POST filtering parameters as input:
 | `sort` | Column to sort clicks by (see below). Without it, clicks are returned in natural (insertion) order. |
 | `order` | Sort direction: `asc` or `desc`. By default `desc`. |
 | `user` | User ID in team. |
-| `show` | Number of clicks per page. Enables pagination. Without it, all matching clicks are returned (capped at 10000 rows) and `show` is `-1` in the response. |
+| `show` | Number of clicks per page, at most `1000`: a larger value is reduced to `1000`, and `1000` is returned in the response. Enables pagination. Without it, or with a value below `1`, all matching clicks are returned (capped at 10000 rows) and `show` is `-1` in the response. |
 | `page` | Page number, starting from `1` (used together with `show`). |
 
 The result of the filters (`filter`):
@@ -552,7 +779,7 @@ The result of the function is an associative array:
 | `status` | The result of the operation: `ok` in case of success, `error` in case of an error. |
 | `data` | An array of clicks, the composition of the fields is analyzed further. |
 | `page` | Current page number (echoes the request, `1` by default). |
-| `show` | Page size, or `-1` when pagination was not requested. |
+| `show` | Page size actually used (not more than `1000`), or `-1` when pagination was not requested. |
 | `total` | Total number of matching clicks. When paginated it is the full count; otherwise it equals the number of returned clicks. |
 | `error` | Error code for status `error` with value from the list:
 
