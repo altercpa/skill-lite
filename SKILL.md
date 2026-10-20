@@ -1,11 +1,11 @@
 ---
 name: altercpa-lite-api
-description: Full API reference for AlterCPA Lite tracker. Use this skill whenever making API calls to the tracker, answering questions about tracker endpoints, building integrations, or writing code that interacts with the AlterCPA Lite API. Triggers on any mention of AlterCPA tracker API endpoints, postbacks, flows, domains, filter/cloaking, campaign copy, visit journal, statistics and journal clearing, blacklists (IP / network / header block-lists), click tracking, tracker statistics, a single lead with its status history, API-request and outgoing-postback journals (logs), API key reset, ad-spend / click-cost export connectors (adv), advertising-network spend import (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin, FBtool, MixAdvert, AdPartner), or the hack APIs — Facebook Conversions API pixels (fbpix), TikTok Events API pixels (ttpix), Google Ads offline-conversion export (gclid), and Postback 2.0 outbound HTTP/Telegram postbacks (p2b).
+description: AlterCPA Lite tracker - the full API reference plus the user guide. Use whenever making calls to the tracker API, building integrations or writing code against it, and whenever explaining how the tracker works (flows and ways, split tests, traffic processing methods, domain parking, postbacks and pixels, goals, leads and statistics, teams, site storage, visit filtering/cloaking, blacklists, spend analytics). Triggers on any mention of tracker API endpoints, postbacks, flows, domains, filter/cloaking, campaign copy, visit journal, statistics, journal clearing, IP/network/header blacklists, click tracking, a single lead with its status history, API-request and postback logs, API key reset, ad-spend connectors (Facebook, TikTok, BIGO Ads, VK, MGid, LuckyAds, Dolphin, FBtool, MixAdvert, AdPartner), and the hack APIs - Facebook Conversions API pixels (fbpix), TikTok Events API pixels (ttpix), Google Ads offline conversions (gclid), Postback 2.0 HTTP/Telegram postbacks (p2b).
 ---
 
 # AlterCPA Lite — API Reference
 
-Use this skill to make correct API calls to the AlterCPA Lite tracker. Read the relevant reference file for full parameter/response details. If you need to build an integration, always check authentication and scope first.
+Use this skill to make correct API calls to the AlterCPA Lite tracker. Read the relevant reference file for full parameter/response details. If you need to build an integration, always check authentication and scope first. For how the tracker behaves rather than which call to make, see **Tracker Guide** below.
 
 ---
 
@@ -275,6 +275,47 @@ partial edit, response shape). The entity id is passed in an **entity-named** pa
 | `references/hacks.md` | Hack APIs: fbpix, ttpix, gclid, p2b — shared Foundation + per-module fields |
 
 When writing code that calls the API, always read the relevant reference file first to get exact parameter names, types, and error codes.
+
+## Tracker Guide
+
+The API reference says *which call*. For *how the tracker behaves* — what a setting does, why traffic went where it did, how a feature fits together — read the matching user-guide page. Pages are short (2–12 KB): open the one or two that fit the question, not the whole set.
+
+- **Exact parameters, types and error codes live in `references/` and `spec/`**; they win when a guide page says otherwise. The guide is written for the web interface ("click…", screens, screenshots); images are not shipped.
+- Guide links to `api.md` / `api-*.md` and root-relative links such as `/profile` are not shipped: the first point to material that is in `references/` (`api-tracker.md` → `references/tracker.md`), the second to screens of the user's own tracker.
+- **Two things are called filtering.** A flow's own filtering (`filter.md`) is a few switches inside a flow or way, optionally attached to a filtering campaign. A *filtering campaign* (`start.md`, `code.md`, `tracker.md`, `blacklist.md`) is a standalone product with its own domain, file and statistics — the one `api/filter/*` and `/fltr/` manage. Blacklists are shared by both kinds and managed by `api/blacklist/*` (`references/blacklist.md`).
+
+**Tracker**
+
+| Page | Read it when the question is about |
+|---|---|
+| `docs/en/flows.md` | Flow setup overview: creating or cloning a flow, per-way settings (geo, probability, device, pause), next step, link versus local file, URL macros such as {click}. |
+| `docs/en/split.md` | Choosing between ways: probabilities, lead caps per period and status, work schedule and time zone, multi-armed bandit optimization, best-option share, new way on every visit. |
+| `docs/en/method.md` | Which working method a way or trafficback uses: 302/301/meta/JS redirects, iframe, curl, local file, stored site, error or blank page, replacement macros ({next}, {local}). |
+| `docs/en/domain.md` | Parking own domains: DNS A/AAAA records, Cloudflare modes, status and SSL, where to park, gluing a domain to a flow's main page, expiry alerts. |
+| `docs/en/postback.md` | Incoming server-side postbacks (network to tracker): integration templates, query parameters, custom status mapping, meaning of hold, leads by flow ID without click ID, error log. |
+| `docs/en/team.md` | Arbitration teams: joining or creating one, leader access to members' clicks, leads, flows and spend, data before joining or after leaving, shared blacklists, storage, API. |
+| `docs/en/sites.md` | Own site storage: installing it, uploading ZIP sites, white screen or 403 after upload, adding {click} and {next} to pages, mirroring a site, changing keys. |
+| `docs/en/filter.md` | Filtering inside a flow or way: bot, blacklist, country, language, ad click ID checks, trafficback for blocked visits, attaching a filtering campaign to a flow. |
+| `docs/en/tags.md` | Outgoing postbacks to ad networks on lead events: source templates, UTM/SubID/data tags and which reach statistics, event types, macros, Facebook events, POST/JSON format, outgoing log. |
+| `docs/en/pixel.md` | Client-side pixel tracking instead of postbacks: click ID cookie, img or JSON pixel URL, lead versus success pixel, status/goal/price parameters, cheating risk. |
+| `docs/en/stats.md` | Reading reports: lead table, click statistics by date/flow/way/geo/device/tags, metric definitions (CR, EPC, EPL, approve, ROI, CPL), hierarchical analytics, clicks log, filters and Excel export. |
+| `docs/en/spend.md` | Getting ad costs into statistics: four import methods (auto loaders, cpc in link, manual, API), UTM tag needed to match spend, per-network tips (Facebook, Dolphin). |
+| `docs/en/goal.md` | Up to five goals (registration versus deposit, RevShare): goal code in postbacks, per-goal columns, uid and status=approve rules for new leads versus goal changes. |
+
+**Filtering campaigns**
+
+| Page | Read it when the question is about |
+|---|---|
+| `docs/en/start.md` | Creating a filtering campaign (not a flow's built-in filter): domain, work modes, countries, target and dummy sites, IP/OS/browser/language checks, when to re-download the file. |
+| `docs/en/code.md` | Filtering-campaign file: what target and dummy sites mean, how each shows (redirects, iframe, curl, PHP include, WordPress, blank), {geo} target files, re-download after method change. |
+| `docs/en/tracker.md` | Success counting in filtering campaigns: mini-tracker counters and metrics, its uid/status/payout postbacks (no duplicate handling), and what the full Tracker menu section offers. |
+| `docs/en/blacklist.md` | The blacklists themselves (not filter switches): system versus personal lists, types, active versus default flags, subnet sizes, regex header rules, team sharing, CSV import/export. |
+
+**Other**
+
+| Page | Read it when the question is about |
+|---|---|
+| `docs/en/server.md` | Choosing a VPS for the tracker: server size by daily clicks, recommended OS, hosting provider pros and cons (Inferno, Hetzner, BulletProof, Timeweb). |
 
 ## OpenAPI Specs
 

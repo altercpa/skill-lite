@@ -16,7 +16,7 @@ The following columns are used in the filter section:
 - **Number of rejected leads** or failed actions.
 - **Total earnings** on approved leads.
 - **CR**: conversion - the ratio of total leads to target visits.
-- **EPC**: cost per click - the ratio of earnings to target visits.
+- **EPC**: earnings per click - the ratio of earnings to target visits.
 - **Approve**: The ratio of the number of approved leads to their total number.
 
 In order to connect the mini-tracker to the affiliate network, you need to set up postbacks for lead creation, lead approval and lead rejection. Ready-made postbacks can be found by clicking on the "Settings" of your filtering campaign and scrolling to the bottom of the page.
