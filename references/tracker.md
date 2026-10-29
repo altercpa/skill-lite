@@ -3,6 +3,7 @@
 ## Table of Contents
 1. Click API (TDS) — `/track-tds/`, `/track-dom/`, `/track-pxl/`, `/track-thx/`
 2. tracker/postback — Receive lead postback
+2a. Owner scope — `scope` of stats, leads, lead, clicks, spend
 3. tracker/stats — Click + lead statistics
 4. tracker/leads — Leads list
 4a. tracker/lead — One lead with its status changes
@@ -254,14 +255,42 @@ The `/postbacks/{flow_key}` route decodes the key: positive value = user postbac
 
 ---
 
+## 2a. Owner scope — stats, leads, lead, clicks, spend
+
+`tracker/stats`, `tracker/leads`, `tracker/lead`, `tracker/clicks` and `tracker/spend` take whose data they work with from the `scope` parameter, like the platform's other API apps. `postback`, `settings` and the other tracker functions do not use it. The `gangs/*` versions of these five functions are the same functions with `scope=gang` forced (section 10).
+
+```
+api/tracker/{func}.json?id={token}[&scope=user|gang|admin][&user={id}][&gang={id}]
+```
+
+| `scope` | Who may use it | Whose data | `user` | `gang` |
+|---|---|---|---|---|
+| `user` (default) | any authenticated caller | the caller's own | ignored | ignored |
+| `gang` (alias `team`) | admin of the caller's own team | the whole team | optional: narrows to one member of the team; `0` or empty = the whole team | ignored — the team is always the caller's own |
+| `admin` (aliases `sys`, `system`, `all`) | admin accounts only | every owner | optional: that user | optional: that team; combined with `user` by AND |
+
+- `scope` is read from the **query string only**; one sent in a POST or JSON body is ignored (the request is then a user-scope one). The word is case-insensitive.
+- An absent, empty or **unknown** `scope` word means `user`: a mistyped word is not an error, it returns the caller's own data. A team admin who sends no `scope` gets their own data, not the team's.
+- `user` and `gang` are read from POST first, then GET, as integers; absent, empty, non-numeric and `0` all mean "not given". They count only in `gang` and `admin` scope (`tracker/spend` has its own owner rules, section 6).
+- Error `scope` (HTTP 400) is answered when: `scope=admin` and the caller is not an admin account; `scope=gang` and the caller has no team or is not an admin of it; `scope=gang` with a `user` that is not currently a member of the caller's team (an unknown user, a user of another team, a user without a team, a former member) — the answer is `scope`, not an empty list, and not `not-found` for `tracker/lead`; the effective caller (see `uu` below) is missing, banned or inactive.
+- `uu`: a caller with an admin account who authenticates with `uu={id}` works as that user, and the scope is judged against that user: `scope=admin` needs the target to be an admin account, `scope=gang` needs the target to be a team admin.
+- Plan check: after the scope check, `stats`, `leads`, `lead` and `clicks` check the plan of the effective caller and answer `payment-required` (HTTP 400, not 402) when it does not allow them — **not applied when the resolved scope is `admin`**. In `gang` scope the caller's own plan is checked. `spend` has no plan check.
+- Order of answers: framework (`key`, `ban`) → `gangs/*` guard (`no-gang`, `access`) → `scope` → `payment-required` → parameter errors (`no-item`, `no-from`, `no-to`, `no-lead`) → data.
+
+---
+
 ## 3. tracker/stats — Statistics
 
 ```
-GET|POST api/tracker/stats.json?id={token}&item=date&from=2025-01-01&to=2025-01-31
+GET|POST api/tracker/stats.json?id={token}&item=date&from=2025-01-01&to=2025-01-31[&scope=user|gang|admin]
 GET|POST api/gangs/stats.json?id={token}&item=date&from=2025-01-01&to=2025-01-31
 ```
 
-**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body.
+**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body. `scope` itself is read from the query string only.
+
+**Owner scope** (section 2a): `scope`, `user` and `gang` choose whose numbers are returned. `user` (default) — the caller's; `gang` — the whole team, `user=M` narrows to one member (`0`/empty = the whole team, a user outside the team → error `scope`); `admin` (admin accounts) — every owner, narrowed by `user` and/or `gang`. `api/gangs/stats` is the same function with `scope=gang` forced (team admins only; a `scope` sent on that URL is overridden). The plan check (`payment-required`) comes after the scope check and is skipped for `scope=admin`.
+
+**`goal` and `event` objects need a single owner:** a `stats` row (and `total`) carries `goal` and `event` objects keyed by slot number `"1"`–`"5"` — there are no flat `goal1`/`event1` keys. The slots come from the goal and event settings of one user, so the objects exist only in user scope and with `user=M` in gang/admin scope; for the whole team or every owner (and for a user with no active goal or event) the key is absent from the rows and from `total`. Only the slots active in that user's settings are listed, each of them in every row (zeros when the row has no matching leads or events); leads on a switched-off goal are not shown. In `total` the objects are summed over the rows (`part` is not recalculated there).
 
 **Pagination:** pass `show` (rows per page; `0`/empty → 100) and `page` (1-based). When `show` is present the `stats` map is cut to the requested page (string keys preserved); when absent, all rows are returned and `show = -1`. The response always echoes `page`, `show`, and `items` (total row count before slicing).
 
@@ -302,7 +331,9 @@ Natural/string comparison is used only when sorting by `name`; all other columns
 | `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium` | UTM filters |
 | `ip` | IP address |
 | `cur`/`curr`/`currency` | Currency for money columns |
-| `user` | Gang-only: restrict to specific team member |
+| `scope` | `user` (default) / `gang` (`team`) / `admin` (`sys`, `system`, `all`), query string only — see section 2a. Absent or unknown → `user`. A refused scope → error `scope` (HTTP 400). Forced to `gang` on `gangs/stats` |
+| `user` | `scope=gang`: narrow to one member of the caller's team (a user outside the team → error `scope`; `0`/empty → the whole team). `scope=admin` (admin accounts): narrow to that user. `scope=user`: ignored |
+| `gang` | `scope=admin` (admin accounts) only: narrow to that team, combined with `user` by AND. Ignored in `user` and `gang` scope |
 | `sort` | Column to sort by (see the allowed values above); unknown → `name`. Absent → no sorting. |
 | `order` | Sort direction `asc`/`desc`; default `desc`. |
 | `show` | Rows per page (enables pagination; `0`/empty → 100) |
@@ -322,7 +353,14 @@ Natural/string comparison is used only when sorting by `name`; all other columns
       "cv": 9, "total": 10, "ur": 80.0, "cr": 10.0, "crt": 10.0,
       "epc": 0.35, "epl": 3.5, "appr": 70.0, "app": 7, "per": 7.0,
       "cpc": 0.05, "cpa": 5.0, "cpv": 3.89, "cpl": 0.5, "profit": 30.0, "roi": 600.0, "roic": "green",
-      "goal1": { "code": "main", "name": "Purchase", "total": 7, "cr": 7.0, "part": 70.0 }
+      "goal": {
+        "1": { "code": "main", "name": "Purchase", "cn": 0, "ch": 1, "ca": 6, "cc": 0, "ct": 0,
+               "mh": 5.0, "ma": 30.0, "mt": 35.0, "cv": 7, "total": 7, "cr": 0, "part": 70 }
+      },
+      "event": {
+        "1": { "code": "form", "name": "Form opened", "total": 5, "cr": 6.25, "crt": 5.0, "crn": 50.0,
+               "dr": 93.75, "drt": 95.0, "drn": 50.0 }
+      }
     }
   },
   "total": { /* same shape, aggregated */ }
@@ -370,21 +408,25 @@ Natural/string comparison is used only when sorting by `name`; all other columns
 | `profit` | Revenue minus cost (approved leads) |
 | `roi` | ROI % (positive = profit, 0 = breakeven, -100 = total loss) |
 | `roic` | ROI color label: `green` (profit), `yellow` (near-zero), `red` (loss) |
-| `goal1`–`goal5` | Per-goal breakdown: `{code, name, total, cr, part}` (only when goals configured) |
-| `event1`–`event5` | Per-event breakdown: `{total, code, name, cr, crt, crn, dr, drt, drn}` |
+| `goal` | Object keyed by the active goal slot (`"1"`–`"5"`): `code`, `name`, `part` (the goal's leads as % of the row's `total`), the lead counters and money fields `cn`, `ch`, `ca`, `cc`, `ct`, `mh`, `ma`, `mt`, `mch`, `mca`, `mct`, `mmt`, `mmh`, `mma`, `cv`, `total`, `epl`, `appr`, `app`; the click-based ratios `ur`, `cr`, `crt`, `epc`, `per` are always `0` here. Only when the numbers have a single owner and that user has active goals — see Owner scope above |
+| `event` | Object keyed by the active event slot (`"1"`–`"5"`): `{total, code, name, cr, crt, crn, dr, drt, drn}` (same condition) |
 
-**Errors:** `payment-required` (HTTP 400, not 402!), `no-item`, `no-from`, `no-to`
+**Errors:** `scope` (HTTP 400), `payment-required` (HTTP 400, not 402!; never for `scope=admin`), `no-item`, `no-from`, `no-to`. `gangs/stats` adds `no-gang` (HTTP 400) and `access` (HTTP 403) before all of these.
 
 ---
 
 ## 4. tracker/leads — Leads list
 
 ```
-GET|POST api/tracker/leads.json?id={token}&from=2025-01-01&to=2025-01-31
+GET|POST api/tracker/leads.json?id={token}&from=2025-01-01&to=2025-01-31[&scope=user|gang|admin]
 GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 ```
 
-**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body.
+**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body. `scope` itself is read from the query string only.
+
+**Owner scope** (section 2a): `user` (default) returns the caller's own leads; `gang` the whole team's leads (`user=M` narrows to one member; `0`/empty = the whole team; a user outside the team → error `scope`); `admin` (admin accounts) every owner's leads, narrowed by `user` and/or `gang`. `api/gangs/leads` is the same function with `scope=gang` forced (team admins only; a `scope` sent on that URL is overridden). The plan check (`payment-required`) comes after the scope check and is skipped for `scope=admin`. Every returned lead carries its owner in `user`; its `siteurl` is built for the lead's own team when the lead has one (so a team member's lead resolves to the team's site address), otherwise for its user.
+
+**Goal filter and goal label:** the `goal` filter and the `goal` code of every returned lead are looked up in the goal settings of one user — the user named by `user=M` (gang/admin scope), otherwise the caller. The `goal` **filter** knows only goals that are active in those settings; the returned label is the code configured for the lead's slot, even if that goal has since been switched off. A lead stores its goal as a slot number set from its owner's goal settings when the lead was saved. In user scope the settings are the owner's own, so the label matches what the owner sees; with `user=M` it matches for M's leads. In `gang` or `admin` scope **without** `user`, the caller's settings are used, not the lead owners': the `goal` code is turned into a slot number in the caller's settings and matched against every owner's leads (ambiguous when members configured different codes), and the returned label is the caller's code for the lead's slot. Pass `user=M` for exact results on one member's leads.
 
 **Pagination:** pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching leads. When `show` is absent or below `1`, **all** matching leads are returned unpaginated (`show = -1`, hard-capped at 10000 rows) — use narrow date ranges or `show` to avoid hitting the cap on unbounded pulls.
 
@@ -414,12 +456,14 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 | `browser` | Numeric browser ID (same enumeration as the `browser` response field below) |
 | `hour` | Hour of the day of the lead, `0`–`23`, in the tracker time zone (the same as `from`/`to`) |
 | `gl` | Numeric goal ID |
-| `goal` | Symbolic goal code (e.g. `"main"`), resolved to the numeric goal ID of the user. If the code is unknown, the filter is silently ignored (no error). |
+| `goal` | Symbolic goal code (e.g. `"main"`), resolved to the numeric goal ID in the goal settings of the user named by `user` (gang/admin scope), otherwise of the caller — see Goal filter and goal label above. Inactive and unknown codes are not found: the filter is then silently ignored (no error). |
 | `click` | Symbolic click code |
 | `flow` | Symbolic flow code |
 | `status` | Status group: `new`, `hold`, `approve`, `cancel`, `trash`, `valid` (all non-trash), `wait` (new+hold), `good` (hold+approve), `bad` (cancel+trash) |
 | `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium`, `domain`, `subid`, `customer` | Tag filters |
-| `user` | Gang-only: restrict to team member |
+| `scope` | `user` (default) / `gang` (`team`) / `admin` (`sys`, `system`, `all`), query string only — see section 2a. Absent or unknown → `user`. A refused scope → error `scope` (HTTP 400). Forced to `gang` on `gangs/leads` |
+| `user` | `scope=gang`: narrow to one member of the caller's team (a user outside the team → error `scope`; `0`/empty → the whole team). `scope=admin` (admin accounts): narrow to that user. `scope=user`: ignored. Also selects the goal settings used for `goal` |
+| `gang` | `scope=admin` (admin accounts) only: narrow to that team, combined with `user` by AND. Ignored in `user` and `gang` scope |
 | `sort` | Column to sort by (see list above); unknown → lead ID. Absent → no ordering. |
 | `order` | Sort direction; only `asc` gives ascending. Default `desc`. |
 | `show` | Rows per page, at most `1000` (a larger value is reduced to `1000`, and `1000` is echoed back); enables paging. Absent or below `1` → all rows, capped at 10000 |
@@ -457,30 +501,38 @@ GET|POST api/gangs/leads.json?id={token}&from=2025-01-01&to=2025-01-31
 Field notes:
 - `os` — numeric OS ID detected from the stored user-agent (same enumeration as the `os` filter above: `0`=Other, `1`=Windows, `2`=macOS, `3`=Linux, `4`=iOS, `5`=Android, `6`=WindowsMobile, `7`=Symbian, `8`=BlackBerry); `0` when no UA was stored on the lead.
 - `browser` — numeric browser ID detected from the stored user-agent (same enumeration as the `browser` filter above: `0`=Other, `1`=Chrome, `2`=Firefox, `3`=IE, `4`=Safari, `5`=Opera, `6`=Edge, `7`=Facebook, `8`=Instagram, `9`=TikTok, `10`=WebView, `11`=Bot); `0` when no UA was stored.
+- `user` — owner of the lead. `siteurl` — the site address built for the lead's own team when it has one (a team member's lead resolves to the team's site address), otherwise for its user; `false` when the lead has no site.
+- `goal` — the code of the lead's goal slot in the goal settings used for the request (see Goal filter and goal label above), or `false` when the lead has no goal.
 
 **Note:** The `status` field in each lead object is the character status code — one of `new`, `hold`, `approve`, `cancel`, `trash`. The codes are not translated, so the value can be parsed programmatically; it is the same set the `status` filter accepts (the numeric form 1–5 is used by the `st` filter).
 
-**Errors:** `payment-required`
+**Errors:** `scope` (HTTP 400), `payment-required` (HTTP 400; never for `scope=admin`). `gangs/leads` adds `no-gang` (HTTP 400) and `access` (HTTP 403) before them.
 
 ---
 
 ## 4a. tracker/lead — One lead with its status changes
 
 ```
-GET|POST api/tracker/lead.json?id={token}&lead={lead_id}
+GET|POST api/tracker/lead.json?id={token}&lead={lead_id}[&scope=user|gang|admin]
 GET|POST api/gangs/lead.json?id={token}&lead={lead_id}
 ```
 
-Returns one lead by its numeric ID together with the history of its status changes. Same owner scope as `tracker/leads`: the user's own leads; with the `gangs` alias the team's leads (optional `user=M` requires the lead to belong to that member). Parameters may be sent via GET or POST (`form-urlencoded` or JSON; POST wins).
+Returns one lead by its numeric ID together with the history of its status changes. Same owner scope as `tracker/leads` (section 2a): `user` (default) — the caller's own leads; `gang` — the team's leads, `user=M` requires the lead to belong to that member; `admin` (admin accounts) — any owner's lead, narrowed by `user` and/or `gang`. `api/gangs/lead` is the same function with `scope=gang` forced (team admins only; a `scope` sent on that URL is overridden). Parameters may be sent via GET or POST (`form-urlencoded` or JSON; POST wins); `scope` itself is read from the query string only.
 
-**Scope / auth:** API key + tariff gate — `payment-required` when not allowed.
+**Scope / auth:** API key. Order: `scope`, then the plan check (`payment-required`, HTTP 400; skipped for `scope=admin`; the effective caller's plan, also in gang scope), then `no-lead`, then the lookup.
+
+**Lead outside the scope:** a lead that exists but lies outside the scope (another user's lead in user scope, another team's or another member's lead in gang scope) is `not-found` (HTTP 404) — never `access`. A `user` that is not in the caller's team is not `not-found` but error `scope` (HTTP 400): it is refused before the lookup. The `changes` list is read within the same scope.
+
+**Goal label:** `goal` is always labelled with the goal settings of the lead's owner (unlike `tracker/leads`), so it equals what the owner sees; in user scope the owner is the caller.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `lead` | int | yes | Numeric lead ID. Empty/`0` → `no-lead`. |
-| `user` | int | no | `gangs` alias only: the lead must belong to this team member. |
+| `scope` | enum | no | `user` (default) / `gang` (`team`) / `admin` (`sys`, `system`, `all`), query string only — see section 2a. Absent or unknown → `user`. A refused scope → error `scope` (HTTP 400). Forced to `gang` on `gangs/lead`. |
+| `user` | int | no | `scope=gang`: the lead must belong to this member of the caller's team (a user outside the team → error `scope`; `0`/empty → any member). `scope=admin` (admin accounts): the lead must belong to this user. `scope=user`: ignored. |
+| `gang` | int | no | `scope=admin` (admin accounts) only: the lead must belong to this team, combined with `user` by AND. Ignored in `user` and `gang` scope. |
 
 **Success response:**
 ```json
@@ -519,30 +571,32 @@ Returns one lead by its numeric ID together with the history of its status chang
 ```
 
 Field notes:
-- Top level — `id`, `user` (owner), `gang` (team the lead belongs to, `0` if none), `time` (UNIX timestamp), `date` (arrival day as the integer `YYYYMMDD`), `status` (character code `new`/`hold`/`approve`/`cancel`/`trash`), `custom` (advertiser's own status text or `false`), `goal` (goal code or `false`), `price`, `currency`, `meta` (extra fields, empty when none).
-- `source` — `click` (character ID or `false`), `uid` (lead ID on the advertiser's side or `false`), `flow` (character ID), `way`, `site`, `siteurl` (or `false`), `filter` (filter result code, same list as in the leads list).
+- Top level — `id`, `user` (owner), `gang` (team the lead belongs to, `0` if none), `time` (UNIX timestamp), `date` (arrival day as the integer `YYYYMMDD`), `status` (character code `new`/`hold`/`approve`/`cancel`/`trash`), `custom` (advertiser's own status text or `false`), `goal` (goal code of the lead owner's settings, or `false`), `price`, `currency`, `meta` (extra fields, empty when none).
+- `source` — `click` (character ID or `false`), `uid` (lead ID on the advertiser's side or `false`), `flow` (character ID), `way`, `site`, `siteurl` (built as in the leads list, or `false`), `filter` (filter result code, same list as in the leads list).
 - `buyer` — `name`, `phone`, `email`, `comment` (each `false` when empty), `cost` and `costcur` (cost and its currency).
 - `visitor` — `ip`, `geo`, `mobile` (`0` desktop / `1` mobile), `os`, `browser` (numeric IDs, same enumerations as in the leads list), `ua` (or `false`).
 - `tags` — `adid`, `data1`–`data5`, `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium`, `domain`, `subid`, `customer`; each a string or `false`.
 - `changes` — status history, oldest first, empty when none. A row is written whenever the status, the price or the cost of the lead changes. `from`/`to` are status numbers (`1` new, `2` hold, `3` approve, `4` cancel, `5` trash; `to` equals `from` for a price/cost-only change), `from_status`/`to_status` the character codes (or `false`), `price`/`cost` the values after the change, `time` the moment of the change.
 - Compared with the leads list the fields are grouped into `source`, `buyer`, `visitor` and `tags`; `time`, `date`, `gang` and `changes` are extra.
 
-**Errors:** `payment-required` (HTTP 400), `no-lead` (HTTP 400, `lead` missing), `not-found` (HTTP 404, no such lead or not in the caller's scope); with the `gangs` alias also `no-gang` and `access`.
+**Errors:** `scope` (HTTP 400), `payment-required` (HTTP 400; never for `scope=admin`), `no-lead` (HTTP 400, `lead` missing), `not-found` (HTTP 404, no such lead or not in the caller's scope); `gangs/lead` adds `no-gang` (HTTP 400) and `access` (HTTP 403) before all of these.
 
 ---
 
 ## 5. tracker/clicks — Raw click list (traffic log)
 
 ```
-GET|POST api/tracker/clicks.json?id={token}&from=2025-01-01&to=2025-01-31
+GET|POST api/tracker/clicks.json?id={token}&from=2025-01-01&to=2025-01-31[&scope=user|gang|admin]
 GET|POST api/gangs/clicks.json?id={token}&from=2025-01-01&to=2025-01-31
 ```
 
 The click-level analogue of `tracker/leads` — same filter/pagination/sorting mechanics, but reports every recorded click regardless of whether it produced a lead. Reads from the click log (not from the leads).
 
-**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body.
+**Method:** GET or POST (parameters are merged; POST wins). Accepts `form-urlencoded` or JSON body. `scope` itself is read from the query string only.
 
-**Scope / auth:** API key + tariff gate — `payment-required` when not allowed.
+**Scope / auth:** API key. Order: `scope`, then the plan check (`payment-required`, HTTP 400; skipped for `scope=admin`; the effective caller's plan, also in gang scope), then the query.
+
+**Owner scope** (section 2a): `user` (default) returns the caller's own clicks; `gang` the whole team's clicks (`user=M` narrows to one member; `0`/empty = the whole team; a user outside the team → error `scope`); `admin` (admin accounts) every owner's clicks, narrowed by `user` and/or `gang`. `api/gangs/clicks` is the same function with `scope=gang` forced (team admins only; a `scope` sent on that URL is overridden). Every returned click carries its owner in `user`; its `siteurl` is built for the click's own team when the click has one (a team member's click resolves to the team's site address), otherwise for its user. Clicks have no goal filter or goal label.
 
 **Pagination:** identical mechanics to `tracker/leads`: pass `show` (rows per page) and `page` (1-based). With `show > 0` only that page is read and `total` is the full number of matching clicks. When `show` is absent or below `1`, all matching clicks are returned unpaginated (`show = -1`, hard-capped at 10000 rows).
 
@@ -575,7 +629,9 @@ The click-level analogue of `tracker/leads` — same filter/pagination/sorting m
 | `utm_source`, `utm_campaign`, `utm_content`, `utm_term`, `utm_medium`, `domain`, `subid`, `customer` | Tag filters (matched through 32-bit hashes of the values) |
 | `click` | Symbolic click code |
 | `flow` | Symbolic flow code |
-| `user` | Gang-only: restrict to team member |
+| `scope` | `user` (default) / `gang` (`team`) / `admin` (`sys`, `system`, `all`), query string only — see section 2a. Absent or unknown → `user`. A refused scope → error `scope` (HTTP 400). Forced to `gang` on `gangs/clicks` |
+| `user` | `scope=gang`: narrow to one member of the caller's team (a user outside the team → error `scope`; `0`/empty → the whole team). `scope=admin` (admin accounts): narrow to that user. `scope=user`: ignored |
+| `gang` | `scope=admin` (admin accounts) only: narrow to that team, combined with `user` by AND. Ignored in `user` and `gang` scope |
 | `sort` | Column to sort by (see the allowed values above); unknown → click ID. Absent → no ordering. |
 | `order` | Sort direction; only `asc` gives ascending. Default `desc`. |
 | `show` | Rows per page, at most `1000` (a larger value is reduced to `1000`, and `1000` is echoed back); enables paging. Absent or below `1` → all rows, capped at 10000 |
@@ -613,7 +669,7 @@ Each click object:
 - `click` — always the symbolic click code; unlike leads, always present since every row here *is* a click.
 - `flow` — symbolic flow code.
 - `offer`, `way`, `site` — numeric IDs. `sitenext` — numeric ID of the second-step site.
-- `siteurl` — computed site URL, or `false` when the click has no site.
+- `siteurl` — site address built for the click's own team when it has one, otherwise for its user; `false` when the click has no site.
 - `filter` — numeric click filter code.
 - `unique`, `next` — booleans.
 - `price`, `currency`.
@@ -632,18 +688,30 @@ Fields empty in storage are coerced to `false` (not `""`/null).
 - Adds click-specific fields: `offer`, `sitenext`, `unique`, `next`, `mobile`.
 - Filter set adds `offer`/`mobile`/`os`/`browser`/`unique`/`next` and drops the lead-only `c`/`st`/`gl`/`goal`/`status` filters.
 
-**Errors:** `payment-required`
+**Errors:** `scope` (HTTP 400), `payment-required` (HTTP 400; never for `scope=admin`). `gangs/clicks` adds `no-gang` (HTTP 400) and `access` (HTTP 403) before them.
 
 ---
 
 ## 6. tracker/spend — Import click spend
 
 ```
-POST api/tracker/spend.json?id={token}
+POST api/tracker/spend.json?id={token}[&scope=user|gang|admin]
 POST api/gangs/spend.json?id={token}
 ```
 
-Bulk-updates the price (cost) of the matching clicks. Supports batch mode.
+Bulk-updates the price (cost) of the matching clicks. Supports batch mode. All items of one request share one owner, chosen as below; the owner (user and/or team) is added to the filters of every item. There is **no plan check** (`payment-required`) in `spend`.
+
+**Which items count:** an item is dropped unless it has a price (`cpc` / `cost` / `zero`) and at least one filter field present in the request — `flow` (with a known flow code), `way`, `geo`, `from`, `to` or a tag filter; `valid`, `unique` and `filter` do not count. If every item is dropped the answer is `empty`. A filter field sent empty still counts as present: without an owner condition such an item matches nothing and is counted in `bad` (the answer is not `empty`); with an owner condition the empty field leaves only that condition, so all of the owner's clicks are repriced.
+
+**Method:** POST recommended (`batch` needs a POST/JSON body). `scope` is read from the query string only; `wm`, `gang` and `user` are read POST first, then GET.
+
+**Order of answers:** framework (`key`, `ban`) → `gangs/spend` guard (`no-gang`, `access`) → `scope` → owner choice → `empty`.
+
+**Owner choice by scope** (section 2a):
+
+- **`gang`** (`scope=gang` / `team`, and every `gangs/spend` call; a `scope` sent on that URL is overridden): the team is the caller's own. The user is `wm` if given, else the `user` (which must be a member of the team), else none — then the whole team's clicks are repriced. `wm` wins over `user`. `user` outside the team (or of a former member) → error `scope`; `user=0` / empty = the whole team. `wm` is **not** checked against the team: a `wm` outside the team raises no `scope` error, the team condition is still applied, so it can match only clicks that carry both that user and the team.
+- **`admin`** (`scope=admin` / `sys` / `system` / `all`, admin accounts only): the user is `user`, the team is `gang` (integers; `0`/empty = not given). `wm` and the word `any` are not special (`user=any` counts as not given). **A write with neither `user` nor `gang` goes through** and reprices the matching clicks of **every owner**. The item's own filters are then the only conditions (see **Which items count**).
+- **`user`** (no `scope`, `scope=user`, or an unknown word): with no `gang` opt-in a caller without an admin account always writes to their own clicks, and `user` is ignored. Admin accounts: a `user` replaces the caller as the owner — an id picks that user; `any`, `0`, empty or a non-numeric value means no user condition (every user's clicks). **Team-admin opt-in:** a caller who has a team and is its admin and sends a truthy `gang` (a flag, not an id — the team is always the caller's own) works for the team: the user is `wm`, else `user`, else none (the whole team). This replaces the owner above, also for admin accounts, and neither `wm` nor `user` is checked against the team (the team condition is still applied). Without a truthy `gang` the team is not set.
 
 **Single item parameters:**
 
@@ -662,9 +730,10 @@ Bulk-updates the price (cost) of the matching clicks. Supports batch mode.
 | `valid` | flag | Only clicks that passed all filters (click filter code `0`) |
 | `unique` | flag | Only unique clicks |
 | `batch` | array | Array of item objects (POST/JSON only) |
-| `user` | int or "any" | Admin: target specific user or remove user filter |
-| `wm` | int | Gang: synonym for `user` |
-| `gang` | truthy | Webmaster gang admin: opt into gang scope |
+| `scope` | enum | `user` (default) / `gang` (`team`) / `admin` (`sys`, `system`, `all`), query string only — see Owner choice above. Absent or unknown → `user`. A refused scope → error `scope` (HTTP 400). Forced to `gang` on `gangs/spend` |
+| `user` | int or "any" | `scope=gang` / `gangs/spend`: pins one member of the caller's team (a user outside the team → error `scope`; `0`/empty = the whole team; overridden by `wm`). `scope=admin`: pins that user (`0` / `any` / empty = no user condition). No `scope`: admin accounts only — replaces the caller (`any` / `0` / empty = every user), ignored for others; with the team-admin opt-in it pins a team member when `wm` is absent |
+| `wm` | int | `scope=gang` / `gangs/spend` and the team-admin opt-in: pins one team member; wins over `user`; not checked against the team. Ignored in `admin` scope and in the plain user path |
+| `gang` | truthy / int | No `scope`: a team admin sends a truthy value to opt into the team (the team is always the caller's own). `scope=admin`: the team id to narrow to. Ignored in `gang` scope |
 
 **Batch example:**
 ```json
@@ -680,7 +749,7 @@ Bulk-updates the price (cost) of the matching clicks. Supports batch mode.
 
 `ok`/`bad` = counts of successful/failed items (relevant for batch).
 
-**Errors:** `empty` — no usable price + at least one filter condition found.
+**Errors:** `scope` (HTTP 400; includes `user` outside the team on every `gangs/spend` call, and — the only way a request without `scope` can get it — a missing, banned or inactive effective caller via `uu`); `empty` (HTTP 404) — every item was dropped (see **Which items count**). `gangs/spend` adds `no-gang` (HTTP 400) and `access` (HTTP 403) before them.
 
 ---
 
@@ -786,13 +855,13 @@ Value templates may embed `[[placeholder]]` macros, substituted when the source 
 POST api/tracker/settings.json?id={token}
 ```
 
-Saves per-user (or per-gang) tracker storage configuration. At least one parameter required. With `scope=gang` the settings go to the team's block and only a team admin may write it: any other caller gets `scope` and nothing is written.
+Saves per-user (or per-team) tracker storage configuration. At least one setting parameter is required. The settings go to the caller's own block (the effective user after `uu`), or with `scope=gang` to the team's block. The function has no plan check and does not use the owner scope of section 2a: `scope` is a field of the **POST body** here, a `scope` in the query string is ignored, and only the literal `gang` is special (`team` and the other owner-scope words are not aliases; any other value, or none, writes the caller's own block). With `scope=gang` the caller must have a team and be one of its admins; otherwise the call is refused with `scope` and nothing is written.
 
 **Parameters (all POST):**
 
 | Name | Type | Description |
 |---|---|---|
-| `scope` | string | `user` (default) or `gang` (save the team's config; **team admin only**, else error `scope`). Read from the POST body, not from the query string |
+| `scope` | string | `gang` — save the team's config; the caller must have a team and be its admin, else error `scope` (HTTP 400). Any other value, or absent: the caller's own block. Read from the POST body, not from the query string |
 | `storage` | truthy | Enable external storage server |
 | `domain` | string | Storage domain name |
 | `control` | string | Control script URL |
@@ -801,33 +870,31 @@ Saves per-user (or per-gang) tracker storage configuration. At least one paramet
 
 **Success response:** `{"status":"ok"}`
 
-**Errors:** `scope` — `scope=gang` by a caller who is not a team admin (nothing is written); `no-params` — no recognized keys provided.
+**Errors:** `scope` (HTTP 400) — `scope=gang` by a caller who has no team or is not its admin (nothing is written; checked before `no-params`); `no-params` (HTTP 400) — no recognized keys provided. There is no `access` error here.
 
-**Note:** No gang alias. Gang admins use `scope=gang` from this user-mode endpoint.
+**Note:** No `gangs` alias. Team admins use `scope=gang` in the POST body of this endpoint.
 
 ---
 
 ## 10. gangs/* — Team-scope wrappers
 
-`api/gangs/{func}` is identical to `api/tracker/{func}` but operates in gang scope.
-
-**Additional requirements:**
-- Caller must be assigned to a team (gang)
-- Caller must be the team admin
-
-**Additional errors (returned before the tracker function runs):**
-- `no-gang` — caller has no gang assigned
-- `access` — caller is not the gang admin
-
 **Available gang functions:** `postback`, `stats`, `leads`, `lead`, `clicks`, `spend`
 
+**Requirements (checked first, before the tracker function runs):**
+- Caller must be assigned to a team (gang) — else `no-gang` (HTTP 400)
+- Caller must be the team admin — else `access` (HTTP 403)
+
+**`gangs/X` = `tracker/X?scope=gang` plus this guard** for `stats`, `leads`, `lead`, `clicks` and `spend` (section 2a). The scope is forced after the guard: a `scope` sent on a `gangs/*` URL (for instance `scope=admin`) is overridden with `gang`, and `gang=` cannot redirect it — the team is always the caller's own. Order of answers: `no-gang` → `access` → `scope` (a `user` outside the team, or a banned/inactive effective caller who is still a team admin) → `payment-required` (not for `spend`) → parameter errors → data. `user=0` or empty means the whole team.
+
 **Differences from user scope:**
-- `postback`: the lead is looked up among the team's leads instead of the user's
-- `stats`: scoped to the whole team; optional `?user=N` filters by team member
-- `leads`: scoped to the team's leads; optional `?user=M` refines
-- `lead`: looks the lead up among the team's leads; optional `?user=M` requires the lead to belong to that member
-- `clicks`: scoped to the team's clicks; optional `?user=M` refines (identical structure to `gangs/leads`)
-- `spend`: applies both the user and the team filters; `wm`/`user` param targets a team member
+- `postback`: the lead is looked up among the team's leads instead of the user's. It does not use `scope`
+- `stats`: the whole team's numbers; optional `?user=N` (a team member) narrows to that member and, only then, adds the `goal` / `event` objects
+- `leads`: the team's leads; optional `?user=M` narrows to a member. The `goal` filter and labels use the settings of `user=M` when given, otherwise the caller's (see section 4)
+- `lead`: looks the lead up among the team's leads; optional `?user=M` requires the lead to belong to that member; a lead of another team is `not-found` (HTTP 404). The `goal` label is the lead owner's
+- `clicks`: the team's clicks; optional `?user=M` narrows to a member (identical structure to `gangs/leads`)
+- `spend`: the team is the caller's own; `wm` (wins) or a validated `user` pins one member, otherwise the whole team's clicks are repriced; no plan check (see section 6)
+
+For `stats`, `leads`, `lead`, `clicks` and `spend` the parameter lists and responses are those of the `tracker` functions; `scope` is not needed.
 
 ---
 

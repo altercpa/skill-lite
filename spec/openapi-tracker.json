@@ -3,7 +3,7 @@
   "info": {
     "title": "AlterCPA Lite — Tracker, Gangs & Click API",
     "version": "1.0.0",
-    "description": "Three subsystems: /api/tracker/* (postback, stats, leads, lead, clicks, spend, settings, templates, networks), /api/gangs/* (team-scope wrappers over tracker functions), and the Click/TDS routes (/track-tds/, /track-dom/, /track-pxl/, /track-thx/) which use a different routing mechanism without standard API auth.\n\ntracker/stats, tracker/leads, and tracker/clicks accept GET or POST, support page navigation via show/page, and support column sorting via sort/order (default order is desc).\n\nIMPORTANT: tracker/stats, tracker/leads, tracker/lead, and tracker/clicks return 'payment-required' (not 'unpaid') as the billing error — this answers HTTP 400, not 402.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers."
+    "description": "Three subsystems: /api/tracker/* (postback, stats, leads, lead, clicks, spend, settings, templates, networks), /api/gangs/* (team-scope wrappers over tracker functions), and the Click/TDS routes (/track-tds/, /track-dom/, /track-pxl/, /track-thx/) which use a different routing mechanism without standard API auth.\n\ntracker/stats, tracker/leads, and tracker/clicks accept GET or POST, support page navigation via show/page, and support column sorting via sort/order (default order is desc).\n\nIMPORTANT: tracker/stats, tracker/leads, tracker/lead, and tracker/clicks return 'payment-required' (not 'unpaid') as the billing error — this answers HTTP 400, not 402.\n\nSuccess is HTTP 200; an error is answered with the HTTP status of its error code (400 generic, 401 key/auth, 402 unpaid, 403 access/ban, 404 no-id/bad-id/not-found, 500 app/func/db; bot answers 418) and repeated in the X-API-Status and X-API-Error headers.\n\ntracker/stats, tracker/leads, tracker/lead, tracker/clicks and tracker/spend take whose data they work with from the scope query parameter, like the platform's other API apps: user (default; also the result of an absent, empty or unknown word) is the caller's own data, gang/team is the caller's team (admin of that team only), admin/sys/system/all is every owner (admin accounts only); user and gang narrow the owner in gang and admin scope. The gangs/* versions of these five functions are the same functions with scope=gang forced after the team guard (errors no-gang, access). A refused scope answers error scope (HTTP 400); the plan check (payment-required) comes after it and does not apply to scope=admin; tracker/spend has no plan check. tracker/settings reads its scope from the POST body instead (only gang is special)."
   },
   "servers": [
     {
@@ -29,6 +29,26 @@
         "description": "Format: {user_id}-{api_key}"
       }
     },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "user",
+            "gang",
+            "team",
+            "admin",
+            "sys",
+            "system",
+            "all"
+          ],
+          "default": "user"
+        },
+        "description": "Whose data the function works with. Must be in the GET query string even when the body is JSON (a scope in the body is ignored). user (default; also used for an absent, empty or unknown word): the caller's own data. gang/team: the caller's team, admin of that team only; the optional user narrows to one member. admin/sys/system/all: every owner, admin accounts only; the optional user and gang narrow the owner. A refused scope gives error scope (HTTP 400). Not needed on gangs/* (forced to gang); tracker/settings has its own scope field in the POST body."
+      }
+    },
     "headers": {
       "XApiStatus": {
         "schema": {
@@ -49,7 +69,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "Function-level error (HTTP 400): payment-required (stats, leads, lead, clicks: answered with 400, not 402), no-lead (lead), no-item, no-from, no-to, no-changes, no-params, no-gang (gangs/*); any error code not listed for another status.",
+        "description": "Function-level error (HTTP 400): scope (stats, leads, lead, clicks, spend, gangs/*: the owner scope was refused - scope=admin by a caller without an admin account, scope=gang by a caller without a team or not its admin, a user outside the caller's team, or an unusable effective caller; settings: scope=gang by a caller without a team or not its admin), payment-required (stats, leads, lead, clicks: answered with 400, not 402; never for scope=admin), no-lead (lead), no-item, no-from, no-to, no-changes, no-params, no-gang (gangs/*: caller has no team); any error code not listed for another status.",
         "headers": {
           "X-API-Status": {
             "$ref": "#/components/headers/XApiStatus"
@@ -115,7 +135,7 @@
         }
       },
       "Forbidden": {
-        "description": "Error ban (user banned or inactive) or access (lead outside the scope; gangs/*: caller is not the gang admin).",
+        "description": "Error ban (user banned or inactive) or access (gangs/*: caller is not an admin of its team; postback: the click, flow or lead belongs to another user or team). A lead outside the caller's scope is not-found (HTTP 404), never access.",
         "headers": {
           "X-API-Status": {
             "$ref": "#/components/headers/XApiStatus"
@@ -505,57 +525,141 @@
             "type": "string",
             "description": "ROI color label (green/yellow/red)"
           },
-          "goal1": {
+          "goal": {
             "type": "object",
-            "description": "Goal breakdown (only when goal is configured)",
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "total": {
-                "type": "integer"
-              },
-              "cr": {
-                "type": "number"
-              },
-              "part": {
-                "type": "number"
+            "description": "Per-goal breakdown keyed by the active goal slot (\"1\" to \"5\"); there are no flat goal1..goal5 keys. Present only when the numbers have a single owner (user scope, or user=M in gang/admin scope) and that user has active goals; absent for the whole team or every owner. Every active slot is listed in every row (zeros when empty); leads on a switched-off goal are not shown. In total the entries are summed over the rows and part is not recalculated.",
+            "propertyNames": {
+              "pattern": "^[1-5]$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "part": {
+                  "type": "number",
+                  "description": "The goal's leads as a percentage of the row's total"
+                },
+                "cn": {
+                  "type": "number"
+                },
+                "ch": {
+                  "type": "number"
+                },
+                "ca": {
+                  "type": "number"
+                },
+                "cc": {
+                  "type": "number"
+                },
+                "ct": {
+                  "type": "number"
+                },
+                "mh": {
+                  "type": "number"
+                },
+                "ma": {
+                  "type": "number"
+                },
+                "mt": {
+                  "type": "number"
+                },
+                "mch": {
+                  "type": "number"
+                },
+                "mca": {
+                  "type": "number"
+                },
+                "mct": {
+                  "type": "number"
+                },
+                "mmt": {
+                  "type": "number"
+                },
+                "mmh": {
+                  "type": "number"
+                },
+                "mma": {
+                  "type": "number"
+                },
+                "cv": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                },
+                "epl": {
+                  "type": "number"
+                },
+                "appr": {
+                  "type": "number"
+                },
+                "app": {
+                  "type": "number"
+                },
+                "ur": {
+                  "type": "number",
+                  "description": "Click-based ratio; always 0 in a goal entry"
+                },
+                "cr": {
+                  "type": "number",
+                  "description": "Click-based ratio; always 0 in a goal entry"
+                },
+                "crt": {
+                  "type": "number",
+                  "description": "Click-based ratio; always 0 in a goal entry"
+                },
+                "epc": {
+                  "type": "number",
+                  "description": "Click-based ratio; always 0 in a goal entry"
+                },
+                "per": {
+                  "type": "number",
+                  "description": "Click-based ratio; always 0 in a goal entry"
+                }
               }
             }
           },
-          "event1": {
+          "event": {
             "type": "object",
-            "description": "Event breakdown (only when events are configured)",
-            "properties": {
-              "total": {
-                "type": "integer"
-              },
-              "code": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "cr": {
-                "type": "number"
-              },
-              "crt": {
-                "type": "number"
-              },
-              "crn": {
-                "type": "number"
-              },
-              "dr": {
-                "type": "number"
-              },
-              "drt": {
-                "type": "number"
-              },
-              "drn": {
-                "type": "number"
+            "description": "Per-event breakdown keyed by the active event slot (\"1\" to \"5\"); there are no flat event1..event5 keys. Present under the same condition as goal. Every active slot is listed in every row (total 0 when empty).",
+            "propertyNames": {
+              "pattern": "^[1-5]$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "integer"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "cr": {
+                  "type": "number"
+                },
+                "crt": {
+                  "type": "number"
+                },
+                "crn": {
+                  "type": "number"
+                },
+                "dr": {
+                  "type": "number"
+                },
+                "drt": {
+                  "type": "number"
+                },
+                "drn": {
+                  "type": "number"
+                }
               }
             }
           }
@@ -605,7 +709,8 @@
             "type": [
               "string",
               "boolean"
-            ]
+            ],
+            "description": "Site address built for the lead's own team when it has one (a team member's lead resolves to the team's site address), otherwise for its user; false when the lead has no site"
           },
           "filter": {
             "type": "integer"
@@ -622,7 +727,8 @@
             "type": [
               "string",
               "boolean"
-            ]
+            ],
+            "description": "Code of the lead's goal slot in the goal settings used for the request (the user named by user in gang/admin scope, otherwise the caller), or false"
           },
           "price": {
             "type": "number"
@@ -755,7 +861,7 @@
               "string",
               "boolean"
             ],
-            "description": "Computed site URL, or false when the click has no site"
+            "description": "Site address built for the click's own team when it has one (a team member's click resolves to the team's site address), otherwise for its user; false when the click has no site"
           },
           "filter": {
             "type": "integer",
@@ -1110,7 +1216,7 @@
               "string",
               "boolean"
             ],
-            "description": "Goal code or false"
+            "description": "Goal code from the lead owner's goal settings, or false"
           },
           "price": {
             "type": "number"
@@ -1149,7 +1255,8 @@
                 "type": [
                   "string",
                   "boolean"
-                ]
+                ],
+                "description": "Site address built for the lead's own team when it has one (a team member's lead resolves to the team's site address), otherwise for its user; false when the lead has no site"
               },
               "filter": {
                 "type": "integer",
@@ -1636,7 +1743,7 @@
         "tags": [
           "Tracker Statistics"
         ],
-        "description": "Returns aggregated statistics grouped by the chosen item dimension. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — when show is set the stats map is cut to the requested page; the response always echoes page, show, and items (total row count before paging). Sorting (sort/order) is applied to the full result set before paging. Error codes by HTTP status: 400 payment-required, no-item, no-from, no-to.",
+        "description": "Returns aggregated statistics grouped by the chosen item dimension. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — when show is set the stats map is cut to the requested page; the response always echoes page, show, and items (total row count before paging). Sorting (sort/order) is applied to the full result set before paging. Owner scope: scope (query string only), user and gang choose whose numbers are returned - user (default): the caller's; gang: the whole team, user=M narrows to one member (0 or empty = the whole team, a user outside the team gives error scope); admin (admin accounts): every owner, narrowed by user and/or gang. The per-row goal and event objects (keyed by slot 1-5, not flat goal1/event1 keys) need a single owner (user scope, or user=M in gang/admin scope); for the whole team or every owner they are absent from the rows and from total. The plan check (payment-required) comes after the scope check and is skipped for scope=admin.\n\nError codes by HTTP status: 400 scope, payment-required (never for scope=admin), no-item, no-from, no-to.",
         "parameters": [
           {
             "name": "item",
@@ -1836,12 +1943,23 @@
             "description": "Currency for money columns (also: curr, currency)"
           },
           {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
             "name": "user",
             "in": "query",
             "schema": {
               "type": "integer"
             },
-            "description": "Gang scope only: filter by team member"
+            "description": "scope=gang: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). scope=admin (admin accounts): narrow to that user. scope=user: ignored. POST first, then GET."
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=admin (admin accounts) only: narrow to that team; combined with user by AND. Ignored in user and gang scope. POST first, then GET."
           },
           {
             "name": "sort",
@@ -1994,7 +2112,7 @@
         "tags": [
           "Tracker Statistics"
         ],
-        "description": "Returns leads matching filters. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching leads; without show, all matching leads are returned (show=-1, hard-capped at 10000 rows) so pass show to avoid hitting the cap on large pulls. sort/order are applied by the database.\n\nBoth goal= (symbolic code, e.g. 'main') and gl= (numeric goal ID) work. goal= is resolved to the numeric goal ID of the user; if the code is unknown, the filter is silently ignored.\n\nError codes by HTTP status: 400 payment-required.",
+        "description": "Returns leads matching filters. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching leads; without show, all matching leads are returned (show=-1, hard-capped at 10000 rows) so pass show to avoid hitting the cap on large pulls. sort/order are applied by the database.\n\nBoth goal= (symbolic code, e.g. 'main') and gl= (numeric goal ID) work. goal= is looked up among the active goals in the goal settings of one user - the user named by user= (gang/admin scope), otherwise the caller; an unknown or inactive code silently disables the filter. The goal code of every returned lead is the code configured for the lead's slot in the same settings, even if that goal has since been switched off (only the filter is limited to active goals). In user scope they are the owner's own, so labels match what the owner sees; in gang or admin scope without user= the caller's settings are used, not the lead owners' (the code is turned into a slot number that is matched against every owner's leads, ambiguous when members configured different codes) - pass user=M for exact results.\n\nOwner scope: scope (query string only), user and gang choose whose leads are returned - user (default): the caller's own; gang: the whole team, user=M narrows to one member (0 or empty = the whole team, a user outside the team gives error scope); admin (admin accounts): every owner, narrowed by user and/or gang. Every lead carries its owner in user; its siteurl is built for the lead's own team when it has one (a team member's lead resolves to the team's site address), otherwise for its user. The plan check (payment-required) comes after the scope check and is skipped for scope=admin.\n\nError codes by HTTP status: 400 scope, payment-required (never for scope=admin).",
         "parameters": [
           {
             "name": "from",
@@ -2138,7 +2256,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Symbolic goal code (e.g. 'main'), resolved to the numeric goal ID. If unknown, filter is silently ignored."
+            "description": "Symbolic goal code (e.g. 'main'), resolved to the numeric goal ID in the goal settings of the user named by user (gang/admin scope), otherwise of the caller. Inactive and unknown codes are not found: the filter is then silently ignored."
           },
           {
             "name": "click",
@@ -2232,12 +2350,23 @@
             }
           },
           {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
             "name": "user",
             "in": "query",
             "schema": {
               "type": "integer"
             },
-            "description": "Gang scope only: restrict to team member"
+            "description": "scope=gang: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). scope=admin (admin accounts): narrow to that user. scope=user: ignored. Also selects the goal settings used for goal. POST first, then GET."
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=admin (admin accounts) only: narrow to that team; combined with user by AND. Ignored in user and gang scope. POST first, then GET."
           },
           {
             "name": "sort",
@@ -2362,7 +2491,7 @@
         "tags": [
           "Tracker Statistics"
         ],
-        "description": "Returns one lead by its numeric ID together with the history of its status changes (changes, oldest first). A change is recorded whenever the status, the price or the cost of the lead changes. The owner scope is the same as in the leads list: the user's own leads. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET).\n\nThe lead fields are grouped into source, buyer, visitor and tags; time, date, gang and changes are extra compared with the leads list.\n\nError codes by HTTP status: 400 payment-required (subscription expired), 400 no-lead (lead parameter missing), 404 not-found (no such lead or it is outside the caller's scope).",
+        "description": "Returns one lead by its numeric ID together with the history of its status changes (changes, oldest first). A change is recorded whenever the status, the price or the cost of the lead changes. The owner scope is the same as in the leads list: scope (query string only), user and gang choose whose leads can be read - user (default): the caller's own; gang: the team's leads, user=M requires the lead to belong to that member (0 or empty = any member, a user outside the team gives error scope before the lookup); admin (admin accounts): any owner's lead, narrowed by user and/or gang. A lead that exists but lies outside the scope is not-found (HTTP 404), never access; changes are read within the same scope. The goal code is always labelled with the lead owner's goal settings. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET).\n\nThe lead fields are grouped into source, buyer, visitor and tags; time, date, gang and changes are extra compared with the leads list.\n\nOrder of answers: scope, payment-required (skipped for scope=admin), no-lead, lookup.\n\nError codes by HTTP status: 400 scope, 400 payment-required (subscription expired; never for scope=admin), 400 no-lead (lead parameter missing), 404 not-found (no such lead or it is outside the caller's scope).",
         "parameters": [
           {
             "name": "lead",
@@ -2372,6 +2501,25 @@
             },
             "description": "Numeric lead ID. Required.",
             "required": true
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=gang: the lead must belong to this member of the caller's team (a user outside the team gives error scope; 0 or empty = any member). scope=admin (admin accounts): the lead must belong to this user. scope=user: ignored. POST first, then GET."
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=admin (admin accounts) only: the lead must belong to this team; combined with user by AND. Ignored in user and gang scope. POST first, then GET."
           }
         ],
         "responses": {
@@ -2428,7 +2576,7 @@
         "tags": [
           "Tracker Statistics"
         ],
-        "description": "Returns click records — the traffic hitting flows — regardless of whether they produced a lead. The click-level analogue of tracker/leads: same filter/pagination/sorting mechanics. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching clicks; without show, all matching clicks are returned (show=-1, hard-capped at 10000 rows). sort/order are applied by the database.\n\nIMPORTANT: the response array key is 'data', not 'leads' (contrast with tracker/leads).\n\nError codes by HTTP status: 400 payment-required.",
+        "description": "Returns click records — the traffic hitting flows — regardless of whether they produced a lead. The click-level analogue of tracker/leads: same filter/pagination/sorting mechanics. Parameters may be sent via GET or POST (form-urlencoded or JSON; POST overrides GET). Pass show/page for page navigation — with show>0 only that page is read and total is the full number of matching clicks; without show, all matching clicks are returned (show=-1, hard-capped at 10000 rows). sort/order are applied by the database.\n\nIMPORTANT: the response array key is 'data', not 'leads' (contrast with tracker/leads).\n\nOwner scope: scope (query string only), user and gang choose whose clicks are returned - user (default): the caller's own; gang: the whole team, user=M narrows to one member (0 or empty = the whole team, a user outside the team gives error scope); admin (admin accounts): every owner, narrowed by user and/or gang. Every click carries its owner in user; its siteurl is built for the click's own team when it has one (a team member's click resolves to the team's site address), otherwise for its user. The plan check (payment-required) comes after the scope check and is skipped for scope=admin. Clicks have no goal filter or goal label.\n\nError codes by HTTP status: 400 scope, payment-required (never for scope=admin).",
         "parameters": [
           {
             "name": "from",
@@ -2639,12 +2787,23 @@
             "description": "Symbolic flow code"
           },
           {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
             "name": "user",
             "in": "query",
             "schema": {
               "type": "integer"
             },
-            "description": "Gang scope only: restrict to team member"
+            "description": "scope=gang: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). scope=admin (admin accounts): narrow to that user. scope=user: ignored. POST first, then GET."
+          },
+          {
+            "name": "gang",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "scope=admin (admin accounts) only: narrow to that team; combined with user by AND. Ignored in user and gang scope. POST first, then GET."
           },
           {
             "name": "sort",
@@ -2776,7 +2935,7 @@
         "tags": [
           "Tracker Integration"
         ],
-        "description": "Bulk-updates the price (cost) of the matching clicks. Supports batch mode via batch[] array in POST/JSON. Error codes by HTTP status: 404 empty.",
+        "description": "Bulk-updates the price (cost) of the matching clicks. Supports batch mode via batch[] array in POST/JSON. All items of one request share one owner, added to the filters of every item; there is no plan check (payment-required) in this function.\n\nWhich items count: an item is dropped unless it has a price (cpc, cost or zero) and at least one filter field present in the request - flow (with a known flow code), way, geo, from, to or a tag filter; valid, unique and filter do not count. If every item is dropped the answer is empty. A filter field sent empty still counts as present: without an owner condition such an item matches nothing and is counted in bad (the answer is not empty); with an owner condition the empty field leaves only that condition, so all of the owner's clicks are repriced.\n\nOwner choice by scope (scope is read from the query string only; user, wm and gang are read POST first, then GET). gang/team (and every gangs/spend call): the team is the caller's own; the user is wm if given (wins, not checked against the team), else a user that must be a member of the team (outside the team, or a former member, gives error scope), else none = the whole team. admin/sys/system/all (admin accounts only): user and gang are the owner (0 or empty = not given); wm and 'any' are not special; with neither, the matching clicks of every owner are repriced, with the item's own filters as the only conditions. user (default; no scope or an unknown word): a caller without an admin account writes to their own clicks and user is ignored; an admin account may replace the owner with user (any, 0 or empty = every user's clicks); a team admin who sends a truthy gang works for the team (user wm, else user, else none = the whole team), which replaces the owner above, also for admin accounts, with neither wm nor user checked against the team.\n\nOrder of answers: key/ban, gangs/spend guard (no-gang, access), scope, empty. Error codes by HTTP status: 400 scope, 404 empty (every item was dropped).",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
@@ -2906,7 +3065,7 @@
                     ]
                   },
                   "user": {
-                    "description": "Admin: target user ID or 'any' to remove user filter",
+                    "description": "scope=gang / gangs/spend: pins one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team; overridden by wm). scope=admin: pins that user (0, 'any' or empty = no user condition). No scope: admin accounts only - replaces the caller ('any', 0 or empty = every user), ignored for others; with the team-admin opt-in it pins a team member when wm is absent. Also accepted in the query string.",
                     "oneOf": [
                       {
                         "type": "integer"
@@ -2921,16 +3080,13 @@
                   },
                   "wm": {
                     "type": "integer",
-                    "description": "Gang scope: synonym for user"
+                    "description": "scope=gang / gangs/spend and the team-admin opt-in: pins one team member; wins over user and is not checked against the team. Ignored in admin scope and in the plain user path. Also accepted in the query string."
                   },
                   "gang": {
-                    "description": "Webmaster gang admin: opt into gang scope",
+                    "description": "No scope: a team admin sends a truthy value to opt into the team (a flag, not an id - the team is always the caller's own). scope=admin: the team id to narrow to. Ignored in gang scope. Also accepted in the query string.",
                     "oneOf": [
                       {
-                        "type": "integer",
-                        "enum": [
-                          1
-                        ]
+                        "type": "integer"
                       },
                       {
                         "type": "string"
@@ -3038,7 +3194,12 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
       }
     },
     "/api/tracker/settings.json": {
@@ -3048,7 +3209,7 @@
         "tags": [
           "Tracker Integration"
         ],
-        "description": "Saves per-user or per-gang tracker configuration. At least one parameter required. No gangs/ alias — team admins use scope=gang (a field of the POST body here, not the query-string scope); any other caller sending scope=gang gets scope and nothing is written. Error codes by HTTP status: 400 scope, no-params.",
+        "description": "Saves per-user or per-team tracker configuration. At least one setting parameter is required. The settings go to the caller's own block (the effective user after uu), or with scope=gang to the team's block. This function has no plan check and does not use the owner scope of the reports: scope is a field of the POST body here, a scope in the query string is ignored, and only the literal gang is special (team and the other owner-scope words are not aliases; any other value, or none, writes the caller's own block). With scope=gang the caller must have a team and be one of its admins, otherwise the call is refused with scope and nothing is written; this is checked before no-params. No gangs/ alias. There is no access error. Error codes by HTTP status: 400 scope, no-params.",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
@@ -3061,7 +3222,7 @@
                       "user",
                       "gang"
                     ],
-                    "description": "gang = save the team's config block; team admins only, else error scope (nothing is written). Default user."
+                    "description": "gang = save the team's config block; the caller must have a team and be its admin, else error scope (nothing is written). Any other value, or absent: the caller's own block. Read from the POST body."
                   },
                   "storage": {
                     "description": "Enable external storage server"
@@ -3291,7 +3452,7 @@
         "tags": [
           "Gangs (Team Scope)"
         ],
-        "description": "Same as tracker/stats but scoped to the gang. Optional user= to drill into a specific team member.",
+        "description": "Same as tracker/stats?scope=gang plus the team guard (no-gang, access): the statistics of the whole team. A scope sent on this URL is overridden with gang and gang= cannot redirect it; the team is always the caller's own. Optional user= narrows to one member of the team (and, only then, adds the per-row goal and event objects); 0 or empty = the whole team; a user outside the team gives error scope. Order of answers: no-gang, access, scope, payment-required, no-item/no-from/no-to.",
         "parameters": [
           {
             "name": "item",
@@ -3325,12 +3486,12 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Filter by specific team member"
+            "description": "Optional: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). POST first, then GET."
           }
         ],
         "responses": {
           "200": {
-            "description": "Same response as tracker/stats. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+            "description": "Same response as tracker/stats. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not an admin of its team, HTTP 403), both before the tracker errors (scope, payment-required, ...)."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3357,19 +3518,20 @@
         "tags": [
           "Gangs (Team Scope)"
         ],
-        "description": "Same as tracker/leads but scoped to the gang. Optional user= to filter by team member.",
+        "description": "Same as tracker/leads?scope=gang plus the team guard (no-gang, access): the team's leads, with all the filters, paging and sorting of tracker/leads. A scope sent on this URL is overridden with gang. Optional user= narrows to one member of the team (a user outside the team gives error scope; 0 or empty = the whole team). The goal filter and the goal labels use the goal settings of user= when given, otherwise the caller's. Order of answers: no-gang, access, scope, payment-required.",
         "parameters": [
           {
             "name": "user",
             "in": "query",
             "schema": {
               "type": "integer"
-            }
+            },
+            "description": "Optional: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). Also selects the goal settings used for goal. POST first, then GET."
           }
         ],
         "responses": {
           "200": {
-            "description": "Same response as tracker/leads. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+            "description": "Same response as tracker/leads. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not an admin of its team, HTTP 403), both before the tracker errors (scope, payment-required)."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3396,7 +3558,7 @@
         "tags": [
           "Gangs (Team Scope)"
         ],
-        "description": "Same as tracker/lead but the lead is looked up among the team's leads. Optional user= requires the lead to belong to that team member.",
+        "description": "Same as tracker/lead?scope=gang plus the team guard (no-gang, access): the lead is looked up among the team's leads. A scope sent on this URL is overridden with gang. Optional user= requires the lead to belong to that member of the team (a user outside the team gives error scope; 0 or empty = any member). A lead of another team is not-found (HTTP 404). The goal code is labelled with the lead owner's goal settings. Order of answers: no-gang, access, scope, payment-required, no-lead, not-found.",
         "parameters": [
           {
             "name": "lead",
@@ -3412,12 +3574,13 @@
             "in": "query",
             "schema": {
               "type": "integer"
-            }
+            },
+            "description": "Optional: the lead must belong to this member of the caller's team (a user outside the team gives error scope; 0 or empty = any member). POST first, then GET."
           }
         ],
         "responses": {
           "200": {
-            "description": "Same response as tracker/lead. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+            "description": "Same response as tracker/lead. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not an admin of its team, HTTP 403), both before the tracker errors (scope, payment-required, no-lead, not-found)."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3447,19 +3610,20 @@
         "tags": [
           "Gangs (Team Scope)"
         ],
-        "description": "Same as tracker/clicks but scoped to the gang (identical structure to gangs/leads). Scoped to the team's clicks; optional user= filters by team member.",
+        "description": "Same as tracker/clicks?scope=gang plus the team guard (no-gang, access): the team's clicks, with all the filters, paging and sorting of tracker/clicks (identical structure to gangs/leads). A scope sent on this URL is overridden with gang. Optional user= narrows to one member of the team (a user outside the team gives error scope; 0 or empty = the whole team). Order of answers: no-gang, access, scope, payment-required.",
         "parameters": [
           {
             "name": "user",
             "in": "query",
             "schema": {
               "type": "integer"
-            }
+            },
+            "description": "Optional: narrow to one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team). POST first, then GET."
           }
         ],
         "responses": {
           "200": {
-            "description": "Same response as tracker/clicks (key 'data'). Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+            "description": "Same response as tracker/clicks (key 'data'). Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not an admin of its team, HTTP 403), both before the tracker errors (scope, payment-required)."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3486,12 +3650,24 @@
         "tags": [
           "Gangs (Team Scope)"
         ],
-        "description": "Same as tracker/spend but scoped to the gang. wm/user targets a specific team member; without them, applied across the whole gang.",
+        "description": "Same as tracker/spend?scope=gang plus the team guard (no-gang, access): the team is the caller's own; wm (wins, not checked against the team) or a user that must be a member of the team (outside the team gives error scope) pins one member, without them the spend is applied across the whole team. A scope sent on this URL is overridden with gang. No plan check. Order of answers: no-gang, access, scope, empty.",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "wm": {
+                    "type": "integer",
+                    "description": "Pins one team member; wins over user and is not checked against the team."
+                  },
+                  "user": {
+                    "type": "integer",
+                    "description": "Pins one member of the caller's team (a user outside the team gives error scope; 0 or empty = the whole team); overridden by wm."
+                  }
+                },
+                "additionalProperties": true,
+                "description": "The same item fields and batch array as tracker/spend."
               }
             },
             "application/json": {
@@ -3503,7 +3679,7 @@
         },
         "responses": {
           "200": {
-            "description": "Same response as tracker/spend. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not the gang admin, HTTP 403)."
+            "description": "Same response as tracker/spend. Gang-specific errors: no-gang (caller is not in a team, HTTP 400) and access (caller is not an admin of its team, HTTP 403), both before the tracker errors (scope, empty)."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3777,7 +3953,7 @@
     },
     {
       "name": "Gangs (Team Scope)",
-      "description": "Team-scope wrappers over tracker functions. Require gang admin role."
+      "description": "Team-scope wrappers. stats, leads, lead, clicks and spend are the tracker functions with scope=gang forced. Require the gang admin role (errors no-gang, access)."
     },
     {
       "name": "Click API (TDS)",

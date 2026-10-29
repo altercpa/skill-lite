@@ -62,6 +62,8 @@ Most `/api/` endpoints accept an optional `scope` GET parameter:
 
 Error `scope` is returned when the caller lacks permission for the requested scope.
 
+In the tracker app `stats`, `leads`, `lead`, `clicks` and `spend` honour `scope` (`gangs/*` are the same functions with `scope=gang` forced after the guard); `tracker/settings` reads `scope` from the POST body instead, and only `gang` is special (see `references/tracker.md`, section 2a).
+
 **Note:** the `adv` app's ownership is strictly binary (owned by a user XOR by a team) — its `gang` scope does not honor the `user=` sub-filter (no per-member visibility marker). See `references/adv.md`.
 
 ---
@@ -161,11 +163,11 @@ Read `references/tracker.md` for full spec.
 | Endpoint | Also available as | Description |
 |---|---|---|
 | `api/tracker/postback.json` | `api/gangs/postback.json` | Receive lead postback |
-| `api/tracker/stats.json` | `api/gangs/stats.json` | Click + lead statistics (GET/POST, `show`/`page` pagination, `sort`/`order`) |
-| `api/tracker/leads.json` | `api/gangs/leads.json` | Leads list (GET/POST, `show`/`page` pagination, `sort`/`order`; filters include `mobile`, `os`, `browser`, `hour`) |
-| `api/tracker/lead.json` | `api/gangs/lead.json` | One lead by `lead` ID with its status-change history (`changes`) |
-| `api/tracker/clicks.json` | `api/gangs/clicks.json` | Raw click list / traffic log (GET/POST, `show`/`page` pagination, `sort`/`order`, `hour` filter; response key is `data`, not `leads`) |
-| `api/tracker/spend.json` | `api/gangs/spend.json` | Import click spend |
+| `api/tracker/stats.json` | `api/gangs/stats.json` | Click + lead statistics (GET/POST, `scope` + `user`/`gang`, `show`/`page` pagination, `sort`/`order`; goal/event blocks only for a single owner) |
+| `api/tracker/leads.json` | `api/gangs/leads.json` | Leads list (GET/POST, `scope` + `user`/`gang`, `show`/`page` pagination, `sort`/`order`; filters include `mobile`, `os`, `browser`, `hour`; `goal` is read in the goal settings of `user`, or else of the caller) |
+| `api/tracker/lead.json` | `api/gangs/lead.json` | One lead by `lead` ID with its status-change history (`changes`); `scope` + `user`/`gang`; a lead outside the scope is `not-found` |
+| `api/tracker/clicks.json` | `api/gangs/clicks.json` | Raw click list / traffic log (GET/POST, `scope` + `user`/`gang`, `show`/`page` pagination, `sort`/`order`, `hour` filter; response key is `data`, not `leads`) |
+| `api/tracker/spend.json` | `api/gangs/spend.json` | Import click spend (`scope=gang`: owner `wm`, else `user`, else the whole team; `scope=admin` with no `user`/`gang` reprices every owner; no plan check) |
 | `api/tracker/templates.json` | — | CPA-network postback templates (reference book) |
 | `api/tracker/networks.json` | — | Traffic-source presets (reference book) |
 | `api/tracker/settings.json` | — | Update storage/control settings (`scope=gang` in the POST body needs a team admin, else `scope`) |
